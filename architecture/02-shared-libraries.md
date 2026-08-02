@@ -6,8 +6,8 @@ Three shared library repositories: two for language-specific backend utilities, 
 
 ## 1. `common-go` — Shared Go Module
 
-**Repository:** `github.com/gym-chain/common-go`  
-**Import:** `go get github.com/gym-chain/common-go`
+**Repository:** `github.com/pploc/common-go`
+**Import:** `go get github.com/pploc/common-go`
 
 ### Structure
 
@@ -190,11 +190,12 @@ public interface EventPublisher {
     void publish(String topic, String key, Message payload, Map<String, String> headers);
 }
 
-// Implementation adds:
-//   - trace_id from current OpenTelemetry context
+// Implementation adds canonical metadata headers:
+//   - W3C traceparent (and optional tracestate) from OpenTelemetry context
 //   - source = spring.application.name
-//   - timestamp = now
-//   - Protobuf serialization
+//   - timestamp = decimal Unix epoch milliseconds
+//   - Schema Registry-framed concrete Protobuf serialization
+//   - x-trace-id only as a compatibility fallback
 ```
 
 #### Retryable Consumer with DLQ
@@ -212,7 +213,7 @@ To maintain eventual consistency without locking partitions or losing messages:
 1. **Dead Letter Queue Routing:**
    - Every consumer in `common-java` and `common-go` wraps its message handler in a try-catch/retry block.
    - Transient errors (e.g., database connection timeout) trigger up to 3 retries with exponential backoff (e.g., 2s, 4s, 8s).
-   - If the error persists after 3 retries (or on a non-retryable constraint error), the consumer publishes the message to the corresponding Dead Letter topic (e.g., `payment.completed.DLQ`) and commits the offset on the original topic.
+   - If the error persists after 3 retries (or on a non-retryable constraint error), the consumer publishes the original key, framed value, and headers to the corresponding Dead Letter topic (e.g., `payment.completed.DLQ`). It commits the original offset only after confirmed DLQ publication.
 
 2. **DLQ Message Structure:**
    - The DLQ message preserves the original message envelope plus metadata headers:
@@ -243,9 +244,9 @@ Breaking change in common-* → MAJOR bump
   → Services upgrade at their own pace (no forced lockstep)
   → CI runs tests against latest common-* before merge
 
-Proto stubs are generated locally inside the services or shared libraries using `buf generate` or central Makefile commands during development, but can also be resolved via the published Maven dependency (`com.gym.proto:gym-proto-java`) from GitHub Packages inside Gradle configurations.
-  → `make proto` runs generation for both Go and Java
-  → Local `gym-proto/` directory at the root of `gym-chain` serves as the single source of truth
+`gym-proto` is the single source of truth for schemas and versioned cross-language fixtures. It publishes generated Go stubs as the tagged `github.com/pploc/proto-go` module and Java stubs as `com.gym.proto:gym-proto-java`.
+  → `buf generate` regenerates both languages during development
+  → Consumers resolve tagged published stubs without local Go `replace` directives
 ```
 
 ---

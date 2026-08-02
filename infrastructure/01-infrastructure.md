@@ -529,7 +529,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: bufbuild/buf-setup-action@v1
       - run: buf lint
-      - run: buf breaking --against 'https://github.com/gym-chain/backend.git#branch=main'
+      - run: buf breaking --against 'https://github.com/pploc/gym-proto.git#branch=develop'
 
   build-test:
     needs: [detect-changes, proto-lint]

@@ -459,13 +459,26 @@ consumer_groups:
 
 ```
 Schema Registry: Confluent Schema Registry (Protobuf mode)
-Proto files: shared proto repo (github.com/gym-chain/proto)
+Proto files: `github.com/pploc/gym-proto`
+Generated Go stubs: tagged `github.com/pploc/proto-go`
+
+Kafka records use a domain ordering key and a Schema Registry-framed concrete
+Protobuf value. Subjects use TopicNameStrategy (`<topic>-value`). Canonical
+UTF-8 headers are `event-type`, `source`, `timestamp` (decimal Unix epoch
+milliseconds), `event-id`, `traceparent`, and optional `tracestate`.
+`x-trace-id` is a compatibility fallback only; new producers do not emit the
+legacy `x-event-*` headers.
 
 Compatibility mode: BACKWARD
   - New fields can be added (consumers ignore unknown fields)
   - Existing fields cannot be removed or renamed
   - Field numbers cannot be reused
 
+Consumers use at-least-once processing: initial attempt, then 2s, 4s, and 8s
+retries. After the third retry fails, the original key, framed value, and
+headers are published to `{topic}.DLQ` with diagnostic headers. Commit occurs
+only after handler success or confirmed DLQ publication.
+
 Buf CLI enforces breaking change detection in CI:
-  buf breaking --against 'main'
+  buf breaking --against 'develop'
 ```
