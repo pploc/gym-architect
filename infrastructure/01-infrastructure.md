@@ -234,7 +234,7 @@ services:
       - paths: ["/api/v1/checkin"]
         plugins:
           - name: jwt
-            enabled: false  # Door devices authenticate via HMAC/Signature headers in ProcessScan, not member JWTs
+            enabled: true  # Mobile App passes Bearer JWT when scanning QR payload
 
   - name: ms-gym-workout
     url: grpc://ms-gym-workout.default.svc.cluster.local:50051

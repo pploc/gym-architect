@@ -203,18 +203,17 @@ sequenceDiagram
 sequenceDiagram
     actor M as Member
     participant APP as Mobile App
-    participant D as Door Device Screen<br/>(Displays Daily QR)
+    participant S as Display Screen<br/>(Displays Daily QR)
     participant K as Kong Gateway
     participant CS as Check-in Service
     participant R as Redis
     participant MS as Member Service
     participant KF as Kafka
     participant AS as Analytics
-    participant WS as WebSocket/IoT Server
 
-    Note over D: Door Device shows static QR code<br/>containing encrypted(gym_id + daily_token)
+    Note over S: Display Screen shows static/daily QR code<br/>containing base64(gym_id + daily_token)
     M->>APP: Open app, log in
-    M->>APP: Scan QR code shown on Door Device Screen
+    M->>APP: Scan QR code shown on Display Screen
     
     APP->>K: POST /api/v1/checkin/scan<br/>{qr_payload, gym_id} (Bearer JWT)
     K->>K: Rate limit 5/sec per user
@@ -237,19 +236,12 @@ sequenceDiagram
     alt Valid token + active membership
         CS->>CS: INSERT check_in (YugabyteDB)
         CS->>KF: Publish checkin.recorded
-        CS-->>K: Return {success: true}
-        K-->>APP: Return {success: true, message: "Cửa đang mở"} ✅
-        
-        CS->>WS: Push door.unlock {gym_id, status: "TICK"}
-        WS->>D: WebSocket/IoT command: Unlock Door (TICK)
-        D->>D: Flash green light, unlock door
+        CS-->>K: Return {success: true, message: "Check-in thành công"}
+        K-->>APP: Return {success: true, message: "Check-in thành công"} ✅
         KF-->>AS: Update daily_attendance + member_activity
     else Invalid / Expired / Mismatch
-        CS-->>K: Return {success: false, message: "..."}
+        CS-->>K: Return {success: false, message: "Mã QR không hợp lệ"}
         K-->>APP: Return {success: false, message: "Không hợp lệ"} ❌
-        CS->>WS: Push door.unlock {gym_id, status: "X"}
-        WS->>D: WebSocket/IoT command: Reject (X)
-        D->>D: Flash red light, keep locked
     end
 ```
 

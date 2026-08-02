@@ -14,7 +14,7 @@ This document outlines the step-by-step roadmap to implement the microservices s
 | **`common-devops`**| Helm / GHA | N/A | Generic Helm charts, reusable Docker build & K8s deploy workflows |
 | **`ms-gym-identifier`** | Go + Gin | PostgreSQL | Identity management, Bcrypt hashing, JWT issuance |
 | **`ms-gym-member`** | Java 26 + Spring Boot | PostgreSQL | Gym locations, subscription plans, member profile lifecycle |
-| **`ms-gym-checkin`** | Go + Gin | YugabyteDB | Member scanners, GPS validation, WebSocket/IoT door locks |
+| **`ms-gym-checkin`** | Go + Gin | YugabyteDB | QR scan validation, check-in history & attendance recording |
 | **`ms-gym-payment`** | Java 26 + Spring Boot | PostgreSQL | Momo/ZaloPay/VNPay REST webhooks, refund processing |
 | **`ms-gym-workout`** | Go + Gin | Cassandra | Time-series workout logging, PR tracking |
 | **`ms-gym-trainer`** | Java 26 + Spring Boot | PostgreSQL | Trainer profiles, slot allocation, calendar bookings |
@@ -76,8 +76,8 @@ graph TD
 
 ### Phase 3: Access Control & Financials
 6. **`ms-gym-checkin`**:
-   - Implement GPS distance scan verification (validates device distance < 100 meters).
-   - Integrate with WebSocket/IoT gateway for pushing `TICK` or `X` door unlock commands.
+   - Implement QR scan verification & daily token secret handling.
+   - Validate member active membership status and location permissions.
    - Consume daily secrets via Member Service `GetGymDailySecret`.
 7. **`ms-gym-payment`**:
    - Build Spring `@RestController` endpoints for Momo, ZaloPay, and VNPay webhooks.

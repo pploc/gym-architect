@@ -130,12 +130,12 @@ erDiagram
 
 ## Gym QR — Daily Token Generation
 
-The gym door screen displays a QR code containing a daily-rotating token.
+The gym display screen displays a QR code containing a daily-rotating token.
 The **Member Service** owns the QR secret and generates the daily token.
 The **Check-in Service** calls Member Service to validate the token.
 
 ```
-QR Content (displayed on gym door screen):
+QR Content (displayed on gym display screen):
   base64(gym_id + ":" + daily_token)
 
 Daily Token:
@@ -150,11 +150,11 @@ Flow:
   2. For each ACTIVE gym_location:
      token = SHA256(gym_id + today + daily_secret)
      qr_payload = base64(gym_id + ":" + token)
-  3. Gym door device fetches latest QR payload via internal API or push
-  4. Device renders QR on screen
+  3. Gym display screen fetches or updates latest QR payload
+  4. Screen renders QR
 
 Validation (by Check-in Service):
-  1. Member scans gym door QR with phone app
+  1. Member scans gym display screen QR with phone app
   2. App sends qr_payload + JWT to Check-in Service
   3. Check-in Service calls Member Service GetGymDailySecret(gym_id)
   4. Check-in Service recomputes: expected = SHA256(gym_id + today + daily_secret)

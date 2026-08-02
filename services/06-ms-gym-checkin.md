@@ -7,7 +7,7 @@
 - Process QR scans sent from members' Mobile Apps
 - Validate the gym's daily-rotating QR code scanned by the member
 - Verify member's status (ACTIVE) and correct location membership
-- Push door unlock signals (`TICK` or `X`) to gym door devices via a WebSocket/IoT server
+- Record check-in events and publish `checkin.recorded` events to Kafka
 - Return response within **<100ms**
 
 ---
@@ -16,19 +16,18 @@
 
 Rather than checking a member's phone QR, the check-in system uses a **reversed scanning approach**:
 
-1. **Static Display Screens:**
-   - Every gym entrance has an iPad or LED screen displaying a QR code.
+1. **Display Screen:**
+   - Every gym entrance has a simple display screen showing a QR code.
    - The QR code contains: `base64(gym_id + ":" + daily_token)`.
    - The token rotates automatically at midnight (`00:00`).
 
 2. **Customer Scanning:**
-   - The customer walks up, opens their logged-in Mobile App, and scans the QR code.
+   - The customer walks up, opens their logged-in Mobile App, and scans the QR code on the display screen.
    - The app makes an authenticated REST API call with their JWT to the backend.
 
-3. **Door Unlock Dispatch:**
-   - On successful validation, the Check-in Service publishes a door unlock command to a WebSocket/IoT server.
-   - The door server pushes a command down to the physical door hardware (via MQTT or persistent TCP/WebSocket connection).
-   - The device displays a checkmark `✓` and unlocks, or showing `✗` if invalid.
+3. **Check-in Processing & Verification:**
+   - On successful validation, the Check-in Service records the check-in and returns a success response directly to the app.
+   - App displays check-in confirmation (`✓ Check-in thành công`).
 
 ---
 
@@ -38,16 +37,16 @@ Rather than checking a member's phone QR, the check-in system uses a **reversed 
 sequenceDiagram
     participant M as Member
     participant APP as Mobile App
-    participant D as Door Device Screen<br/>(Displays Daily QR)
+    participant S as Display Screen<br/>(Displays Daily QR)
     participant K as Kong Gateway
     participant CS as Check-in Service
     participant R as Redis
     participant MS as Member Service
     participant KF as Kafka
-    participant WS as WebSocket/IoT Server
+    participant AS as Analytics
 
-    Note over D: Door Device shows static QR code<br/>containing base64(gym_id:daily_token)
-    M->>APP: Scan QR code shown on Door Device Screen
+    Note over S: Display Screen shows QR code<br/>containing base64(gym_id:daily_token)
+    M->>APP: Scan QR code shown on Display Screen
     
     APP->>K: POST /api/v1/checkin/scan<br/>{qr_payload, gym_id} (Bearer JWT)
     K->>K: Rate limit 5/sec per user
@@ -70,19 +69,12 @@ sequenceDiagram
     alt Valid token + active membership
         CS->>CS: INSERT check_in (YugabyteDB)
         CS->>KF: Publish checkin.recorded
-        CS-->>K: Return {success: true}
-        K-->>APP: Return {success: true, message: "Cửa đang mở"} ✅
-        
-        CS->>WS: Push door.unlock {gym_id, status: "TICK"}
-        WS->>D: WebSocket/IoT command: Unlock Door (TICK)
-        D->>D: Flash green light, unlock door
+        CS-->>K: Return {success: true, message: "Check-in thành công"}
+        K-->>APP: Return {success: true, message: "Check-in thành công"} ✅
         KF-->>AS: Update daily_attendance + member_activity
     else Invalid / Expired / Mismatch
-        CS-->>K: Return {success: false, message: "..."}
+        CS-->>K: Return {success: false, message: "Mã QR không hợp lệ"}
         K-->>APP: Return {success: false, message: "Không hợp lệ"} ✗
-        CS->>WS: Push door.unlock {gym_id, status: "X"}
-        WS->>D: WebSocket/IoT command: Reject (X)
-        D->>D: Flash red light, keep locked
     end
 ```
 
@@ -192,7 +184,6 @@ internal/
 │       ├── checkin_repo.go         // CheckInRepository interface
 │       ├── member_client.go        // MemberClient interface (gRPC to Member Svc)
 │       ├── qr_cache.go             // QRCache interface (Redis)
-│       ├── door_publisher.go       // DoorPublisher interface (WebSocket push)
 │       └── event_publisher.go
 ├── adapter/
 │   ├── grpc/
@@ -204,8 +195,6 @@ internal/
 │   │   └── member_grpc_client.go   // implements MemberClient
 │   ├── cache/
 │   │   └── redis_qr_cache.go      // implements QRCache
-│   ├── websocket/
-│   │   └── ws_door_publisher.go   // implements DoorPublisher
 │   └── kafka/
 │       └── event_publisher.go
 └── config/
