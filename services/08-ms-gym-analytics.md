@@ -20,10 +20,10 @@
 flowchart LR
     subgraph "Kafka Events (Source)"
         C[checkin.recorded]
-        MA[membership.activated]
-        ME[membership.expired]
-        MP[membership.paused]
-        PC[payment.completed]
+        MA[membership.activated.v1]
+        ME[membership.expired.v1]
+        MP[membership.paused.v1]
+        PC[payment.completed.v1]
         WL[workout.logged]
         BC[booking.completed]
     end
@@ -198,10 +198,10 @@ Nightly job recalculates:
 | Topic | Action |
 |-------|--------|
 | `checkin.recorded` | Upsert member_activity.last_checkin_at, increment total_checkins, upsert daily_attendance |
-| `membership.activated` | Update member_activity.membership_status, increment membership_stats.new_count |
-| `membership.expired` | Update member_activity, increment churned_count |
-| `membership.paused` | Update member_activity.membership_status |
-| `payment.completed` | Increment revenue_daily by amount and type |
+| `membership.activated.v1` | Update member_activity.membership_status, increment membership_stats.new_count |
+| `membership.expired.v1` | Update member_activity, increment churned_count |
+| `membership.paused.v1` | Update member_activity.membership_status |
+| `payment.completed.v1` | Increment revenue_daily by amount and type |
 | `workout.logged` | Update member_activity.last_workout_at, increment total_workouts |
 | `booking.completed` | Increment trainer_utilization.completed and total_hours |
 | `booking.cancelled` | Increment trainer_utilization.cancelled |

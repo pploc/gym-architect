@@ -47,7 +47,7 @@ sequenceDiagram
     PS->>PS: Verify HMAC signature
     PS->>PS: Update payment → COMPLETED
     PS->>PRS: gRPC ConfirmReservation(reservation_id, payment_id)
-    PS->>KF: Publish payment.completed
+    PS->>KF: Publish payment.completed.v1
 
     KF-->>MS: Activate/renew membership
     KF-->>NS: Send payment receipt (SMS + email)
@@ -178,7 +178,7 @@ On InitiatePayment:
 
 | Topic | Key | Trigger | Payload |
 |-------|-----|---------|---------|
-| `payment.completed` | `user_id` | Provider webhook confirms | `{payment_id, user_id, type, reference_id, amount_vnd, gym_id, provider}` |
+| `payment.completed.v1` | `user_id` | Provider webhook confirms | `{payment_id, user_id, type, reference_id, amount_vnd, gym_id, provider}` |
 | `payment.failed` | `user_id` | Provider webhook rejects | `{payment_id, user_id, reason, gym_id, type, reference_id}` |
 | `payment.refunded` | `user_id` | Admin triggers refund | `{payment_id, user_id, refund_amount_vnd, gym_id, type, reference_id}` |
 
@@ -186,7 +186,7 @@ On InitiatePayment:
 
 | Topic | Action |
 |-------|--------|
-| `membership.paused` | Calculate prorated refund if applicable (non-LIFETIME, remaining > 50% cycle) |
+| `membership.paused.v1` | Calculate prorated refund if applicable (non-LIFETIME, remaining > 50% cycle) |
 | `booking.cancelled` | Process full/partial refund based on cancel policy (timing-based) |
 | `booking.auto-rejected` | Process automatic 100% refund for unaccepted trainer bookings |
 | `trainer.suspended` | Process automatic 100% refund for all future bookings linked to the trainer |

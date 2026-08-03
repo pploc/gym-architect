@@ -14,7 +14,7 @@ This document outlines the step-by-step roadmap to implement the microservices s
 | **`common-devops`**| Helm / GHA | N/A | Generic Helm charts, reusable Docker build & K8s deploy workflows |
 | **`ms-gym-identifier`** | Go + Gin | PostgreSQL | Identity management, Bcrypt hashing, JWT issuance |
 | **`ms-gym-member`** | Java 26 + Spring Boot | PostgreSQL | Gym locations, subscription plans, member profile lifecycle |
-| **`ms-gym-checkin`** | Go + Gin | YugabyteDB | QR scan validation, check-in history & attendance recording |
+| **`ms-gym-checkin`** | Go + Gin | YugabyteDB | Kiosk credentials, QR key ownership/validation, check-in history & attendance recording |
 | **`ms-gym-payment`** | Java 26 + Spring Boot | PostgreSQL | Momo/ZaloPay/VNPay REST webhooks, refund processing |
 | **`ms-gym-workout`** | Go + Gin | Cassandra | Time-series workout logging, PR tracking |
 | **`ms-gym-trainer`** | Java 26 + Spring Boot | PostgreSQL | Trainer profiles, slot allocation, calendar bookings |
@@ -25,6 +25,12 @@ This document outlines the step-by-step roadmap to implement the microservices s
 ---
 
 ## Recommended Implementation Roadmap
+
+> **Superseded execution order:** The diagram and numbered phases below are a
+> domain dependency sketch, not the active foundation rollout. Execute
+> [`plans/foundation-first/README.md`](plans/foundation-first/README.md): contract
+> freeze → `gym-proto` release → common libraries → foundation RC/Member
+> validation → stable foundations → Kong/Identifier → ordinary services.
 
 ```mermaid
 graph TD
@@ -68,22 +74,23 @@ graph TD
 4. **`ms-gym-identifier`**:
    - Implement registration, Bcrypt hashing, local/Google OAuth login.
    - Set up Redis refresh token storage and access token blacklisting.
-   - Publish `identity.user.registered`.
+   - Publish `identity.user.registered.v1`.
 5. **`ms-gym-member`**:
-   - Implement Member Profile shell creation (consumes `identity.user.registered`).
+   - Implement Member Profile shell creation (consumes `identity.user.registered.v1`).
    - Implement `gym_locations` and plans CRUD APIs.
    - Implement subscription state machine and scheduler warning jobs.
 
 ### Phase 3: Access Control & Financials
 6. **`ms-gym-checkin`**:
-   - Implement QR scan verification & daily token secret handling.
-   - Validate member active membership status and location permissions.
-   - Consume daily secrets via Member Service `GetGymDailySecret`.
+   - Own encrypted, versioned per-gym QR root keys and display kiosk credentials.
+   - Issue current and next 60-second HMAC-signed display payloads and validate current/previous slots.
+   - During admin provisioning, verify the canonical active gym through Member Service `GetGymLocation`.
+   - During scans, validate active membership and gym scope through Member Service `ValidateMembership`.
 7. **`ms-gym-payment`**:
    - Build Spring `@RestController` endpoints for Momo, ZaloPay, and VNPay webhooks.
    - Implement raw parameter sorting, HMAC string concatenation, and signature checking.
    - Integrate with local virtual-account/transfer check routines.
-   - Publish `payment.completed`.
+   - Publish `payment.completed.v1`.
 
 ### Phase 4: Customer Services & Bookings
 8. **`ms-gym-workout`**:
@@ -115,6 +122,6 @@ If modifying or updating the system design, the following files must be updated 
 | Change | Core Service | Affected Files |
 |--------|--------------|----------------|
 | **JWT Claims** | `ms-gym-identifier` | `docs/services/01-ms-gym-identifier.md`<br/>`docs/architecture/02-shared-libraries.md` (claims extraction)<br/>`docs/services/04-ms-gym-workout.md` (gates) |
-| **QR Scan Method** | `ms-gym-checkin` | `docs/services/06-ms-gym-checkin.md`<br/>`docs/services/02-ms-gym-member.md` (generates secret)<br/>`docs/flows/01-business-flows.md` (QR checkin flow) |
+| **QR Scan Method** | `ms-gym-checkin` | `gym-proto/proto/checkin/v1/checkin.proto`<br/>`docs/services/06-ms-gym-checkin.md`<br/>`docs/services/02-ms-gym-member.md` (location and membership boundary)<br/>`docs/flows/01-business-flows.md` (provisioning, refresh, and scan flows) |
 | **New Event** | None (Kafka) | `docs/architecture/03-kafka-events.md` (add schema)<br/>Consumer & Producer service files |
 | **Ingress/Path** | `infra/` | `docs/infrastructure/01-infrastructure.md` (Kong routing, NetworkPolicies) |

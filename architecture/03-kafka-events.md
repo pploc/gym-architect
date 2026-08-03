@@ -1,20 +1,32 @@
 # Kafka Event Catalog
 
-All async events flowing through Kafka. Schema format: **Protobuf** (reuses gRPC message definitions).
+All async events flowing through Kafka. Schema format: **Protobuf** (reuses gRPC message definitions). Kafka is greenfield: no JSON topics, envelopes, or offsets were deployed, so there is no dual-read, dual-write, adapter, or offset migration.
 
 ---
 
-## Topic Naming Convention
+## Frozen v1 Contract
 
-```
-{domain}.{entity}.{action}
+The first deployed generation consists of exactly these topics:
 
-Examples:
-  identity.user.registered
-  membership.activated
-  payment.completed
-  checkin.recorded
-```
+| Event | Topic | Subject |
+|---|---|---|
+| `UserRegisteredEvent` | `identity.user.registered.v1` | `identity.user.registered.v1-value` |
+| `UserSuspendedEvent` | `identity.user.suspended.v1` | `identity.user.suspended.v1-value` |
+| `UserRoleChangedEvent` | `identity.user.role-changed.v1` | `identity.user.role-changed.v1-value` |
+| `PaymentCompletedEvent` | `payment.completed.v1` | `payment.completed.v1-value` |
+| `MembershipActivatedEvent` | `membership.activated.v1` | `membership.activated.v1-value` |
+| `MembershipPausedEvent` | `membership.paused.v1` | `membership.paused.v1-value` |
+| `MembershipResumedEvent` | `membership.resumed.v1` | `membership.resumed.v1-value` |
+| `MembershipExpiringSoonEvent` | `membership.expiring-soon.v1` | `membership.expiring-soon.v1-value` |
+| `MembershipExpiredEvent` | `membership.expired.v1` | `membership.expired.v1-value` |
+
+All other events in this catalog are future designs and are not deployed until
+they receive an explicit versioned contract.
+
+Topic names follow `{domain}.{entity}.{action}.v1`. Subjects use
+`TopicNameStrategy` (`<topic>-value`) with `BACKWARD` compatibility, and
+production sets `auto.register.schemas=false`. The initial Member consumer group
+is `ms-gym-member-v1`; DLQ topics use `{topic}.DLQ`.
 
 ---
 
@@ -34,14 +46,14 @@ graph LR
     end
 
     subgraph "Kafka Topics"
-        T1[identity.user.registered]
-        T1_SUB[identity.user.suspended]
-        T2[membership.activated]
-        T3[membership.paused]
-        T4[membership.resumed]
-        T5[membership.expiring-soon]
-        T6[membership.expired]
-        T7[payment.completed]
+        T1[identity.user.registered.v1]
+        T1_SUB[identity.user.suspended.v1]
+        T2[membership.activated.v1]
+        T3[membership.paused.v1]
+        T4[membership.resumed.v1]
+        T5[membership.expiring-soon.v1]
+        T6[membership.expired.v1]
+        T7[payment.completed.v1]
         T8[payment.failed]
         T9[payment.refunded]
         T10[workout.logged]
@@ -100,7 +112,7 @@ graph LR
 
 ## Event Definitions
 
-### identity.user.registered
+### identity.user.registered.v1
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -117,7 +129,7 @@ graph LR
 
 ---
 
-### identity.user.suspended
+### identity.user.suspended.v1
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -131,7 +143,7 @@ graph LR
 
 ---
 
-### membership.activated
+### membership.activated.v1
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -149,7 +161,7 @@ graph LR
 
 ---
 
-### membership.paused
+### membership.paused.v1
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -163,7 +175,7 @@ graph LR
 
 ---
 
-### membership.resumed
+### membership.resumed.v1
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -176,7 +188,7 @@ graph LR
 
 ---
 
-### membership.expiring-soon
+### membership.expiring-soon.v1
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -190,7 +202,7 @@ graph LR
 
 ---
 
-### membership.expired
+### membership.expired.v1
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -203,7 +215,7 @@ graph LR
 
 ---
 
-### payment.completed
+### payment.completed.v1
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -370,11 +382,13 @@ graph LR
 |-------|------|-------------|
 | `member_id` | string (UUID) | |
 | `gym_id` | string (UUID) | |
-| `device_id` | string (UUID) | Hardware scanner ID |
+| `device_id` | string (UUID) | Authenticated display kiosk ID from the verified QR payload |
 | `checked_in_at` | int64 | Unix millis |
 
 **Key:** `member_id`  
 **Consumers:** Analytics Service (attendance stats, member_activity)
+
+Gym location, kiosk device, and QR root-key lifecycle changes are handled by authenticated admin RPCs, not Kafka events. During kiosk provisioning, Check-in synchronously verifies the canonical location through Member `GetGymLocation`.
 
 ---
 
@@ -446,11 +460,11 @@ retention.ms: 604800000     # 7 days
 
 # Consumer groups
 consumer_groups:
-  - ms-gym-member-group        # consumes: user.registered, payment.completed, user.suspended
+  - ms-gym-member-v1           # consumes: identity.user.registered.v1, payment.completed.v1, identity.user.suspended.v1
   - ms-gym-notification-group  # consumes: all notification-triggering events (including risk warning and suspensions)
   - ms-gym-analytics-group     # consumes: all analytics-relevant events (including checkins, bookings, workouts)
-  - ms-gym-trainer-group       # consumes: payment.completed (TRAINER_BOOKING), payment.refunded, user.suspended
-  - ms-gym-payment-group       # consumes: membership.paused, booking.cancelled, booking.auto-rejected, trainer.suspended
+  - ms-gym-trainer-group       # consumes: payment.completed.v1 (TRAINER_BOOKING), payment.refunded, user.suspended
+  - ms-gym-payment-group       # consumes: membership.paused.v1, booking.cancelled, booking.auto-rejected, trainer.suspended
 ```
 
 ---
@@ -462,12 +476,13 @@ Schema Registry: Confluent Schema Registry (Protobuf mode)
 Proto files: `github.com/pploc/gym-proto`
 Generated Go stubs: tagged `github.com/pploc/proto-go`
 
-Kafka records use a domain ordering key and a Schema Registry-framed concrete
-Protobuf value. Subjects use TopicNameStrategy (`<topic>-value`). Canonical
-UTF-8 headers are `event-type`, `source`, `timestamp` (decimal Unix epoch
-milliseconds), `event-id`, `traceparent`, and optional `tracestate`.
-`x-trace-id` is a compatibility fallback only; new producers do not emit the
-legacy `x-event-*` headers.
+Kafka records use the domain entity key as their ordering key and a Schema
+Registry-framed concrete Protobuf value. There is no envelope wrapper. Subjects
+use TopicNameStrategy (`<topic>-value`), and production sets
+`auto.register.schemas=false`. Required UTF-8 headers are `event-type`, `source`,
+`timestamp` (decimal Unix epoch milliseconds), `event-id`, and `traceparent`;
+`tracestate` is optional. `x-trace-id` is a read-only compatibility fallback
+only; new producers emit no legacy `x-event-*` headers.
 
 Compatibility mode: BACKWARD
   - New fields can be added (consumers ignore unknown fields)

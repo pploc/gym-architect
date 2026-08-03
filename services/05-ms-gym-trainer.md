@@ -36,8 +36,8 @@ sequenceDiagram
     PS-->>C: {payment_url}
     C->>C: Pay via Momo/ZaloPay
 
-    PS->>KF: payment.completed (type=TRAINER_BOOKING)
-    KF-->>TS: Consume payment.completed
+    PS->>KF: payment.completed.v1 (type=TRAINER_BOOKING)
+    KF-->>TS: Consume payment.completed.v1
     TS->>TS: Update booking → REQUESTED (paid, awaiting trainer)
     TS->>KF: booking.requested
 
@@ -62,7 +62,7 @@ sequenceDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING_PAYMENT: Customer selects slot
-    PENDING_PAYMENT --> REQUESTED: payment.completed
+    PENDING_PAYMENT --> REQUESTED: payment.completed.v1
     PENDING_PAYMENT --> EXPIRED: Payment timeout (30 min, scheduled job)
 
     REQUESTED --> ACCEPTED: Trainer accepts
@@ -280,9 +280,9 @@ Example:
 
 | Topic | Action |
 |-------|--------|
-| `payment.completed` (type=TRAINER_BOOKING) | Move booking from PENDING_PAYMENT → REQUESTED |
+| `payment.completed.v1` (type=TRAINER_BOOKING) | Move booking from PENDING_PAYMENT → REQUESTED |
 | `payment.refunded` (ref=booking_id) | Move booking to CANCELLED |
-| `identity.user.suspended` | If user is Trainer: freeze profile, cancel all future bookings, publish cancellations.<br/>If user is Customer: cancel all future bookings, publish cancellations. |
+| `identity.user.suspended.v1` | If user is Trainer: freeze profile, cancel all future bookings, publish cancellations.<br/>If user is Customer: cancel all future bookings, publish cancellations. |
 
 ---
 

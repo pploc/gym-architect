@@ -6,7 +6,8 @@
 
 - User registration (email/password + Google OAuth2)
 - JWT access token (15 min) + refresh token (7 days)
-- Role management: `CUSTOMER`, `TRAINER`, `ADMIN`
+- Role management: `CUSTOMER`, `TRAINER`, `ADMIN`, `SUPER_ADMIN`
+- Public registration creates `CUSTOMER` only; elevated roles require protected administration or controlled out-of-band provisioning
 - Password reset, email verification
 - Token refresh, revocation, and Redis-backed logout blacklisting
 - User suspension & cascade dispatching
@@ -24,7 +25,7 @@ erDiagram
         varchar password_hash
         varchar auth_provider "LOCAL | GOOGLE"
         varchar provider_id "Google sub ID"
-        varchar role "CUSTOMER | TRAINER | ADMIN"
+        varchar role "CUSTOMER | TRAINER | ADMIN | SUPER_ADMIN"
         varchar status "ACTIVE | SUSPENDED | PENDING_VERIFICATION"
         varchar full_name
         varchar phone
@@ -61,16 +62,17 @@ sequenceDiagram
     participant KF as Kafka
     participant MS as Member Service
 
-    C->>K: POST /api/v1/auth/register {email, password, full_name, role, gym_id}
+    C->>K: POST /api/v1/auth/register {email, password, full_name, gym_id}
     K->>IS: gRPC Register(RegisterRequest)
-    IS->>IS: Validate inputs (email format, strength, etc.)
+    IS->>IS: Validate inputs and force role=CUSTOMER
+    Note over IS: Reject attempts to register TRAINER, ADMIN, or SUPER_ADMIN
     IS->>IS: Generate Bcrypt Hash of password (cost factor = 12)
     IS->>DB: INSERT INTO users (email, password_hash, role, status='PENDING_VERIFICATION', ...)
-    IS->>KF: Publish event to 'identity.user.registered'
+    IS->>KF: Publish event to 'identity.user.registered.v1'
     IS-->>C: AuthResponse (status, verification details)
     
     Note over KF,MS: Async Member Shell Creation
-    KF-->>MS: Consume 'identity.user.registered'
+    KF-->>MS: Consume 'identity.user.registered.v1'
     MS->>MS: Create Member Profile shell (status = NONE)
 ```
 
@@ -116,8 +118,8 @@ sequenceDiagram
     DB-->>IS: RefreshToken record
     IS->>IS: Validate: expires_at > now AND revoked == false
     alt Token Valid
-        IS->>MS: gRPC GetMembershipStatus(user_id)
-        MS-->>IS: {membership_status: "ACTIVE" | "EXPIRED" | "PAUSED"}
+        IS->>MS: gRPC GetMembershipStatusByUserId(user_id)<br/>(mTLS; verified ms-gym-identifier peer)
+        MS-->>IS: {membership_status: "NONE" | "ACTIVE" | "PAUSED" | "EXPIRED"}
         IS->>IS: Generate new JWT Access Token containing latest membership_status
         IS->>IS: Generate new Refresh Token (Refresh Token Rotation)
         IS->>DB: Mark old refresh token as revoked = true
@@ -135,16 +137,29 @@ sequenceDiagram
 ```json
 {
   "sub": "550e8400-e29b-41d4-a716-446655440000",
+  "iss": "gym-identifier",
+  "aud": "gym-api",
+  "iat": 1699999100,
+  "exp": 1700000000,
+  "jti": "access-token-uuid",
+  "kid": "key-id-2026-08",
   "role": "CUSTOMER",
   "gym_id": "gym-uuid-here",
-  "membership_status": "ACTIVE",
-  "exp": 1700000000,
-  "iat": 1699999100,
-  "kid": "key-id-2024"
+  "membership_status": "ACTIVE"
 }
 ```
 
-- `membership_status` is cached in the JWT for speed.
+JWT profile: `RS256`; issuer `gym-identifier`; audience `gym-api`; required
+claims `sub`, `iss`, `aud`, `iat`, `exp`, `jti`, and `kid`. Kong validates the
+algorithm, signature, issuer, audience, expiry, and key ID before injecting
+claims. Current and previous public keys overlap for at least the maximum access-token
+TTL. Tests use a committed fixture public key and test-only signer/private key;
+production keys come from a secret manager and are never committed.
+
+Public methods are Register, Login, Google Login, and Refresh. Logout and all
+other methods are protected unless explicitly documented otherwise.
+
+- `membership_status` is cached in the JWT for speed. New customers and non-customer roles use `NONE`.
 - **Force-Refresh Mechanism:** When a customer completes a membership purchase, the Mobile App receives the success screen. The app immediately calls `POST /api/v1/auth/refresh` using its stored refresh token. The Identity Service queries the Member Service via gRPC, fetches the new `ACTIVE` status, generates a new Access Token with `"membership_status": "ACTIVE"`, and returns it. This bypasses the 15-minute caching latency.
 
 ---
@@ -161,9 +176,10 @@ When a user logs out:
 
 | Route / RPC | Public | Customer | Trainer | Admin | Description |
 |-------------|:---:|:---:|:---:|:---:|-------------|
-| `Register` / `Login` | ✓ | | | | Auth endpoints |
+| `Register` / `Login` / `LoginWithGoogle` / `RefreshToken` | ✓ | | | | Public auth endpoints |
+| `Logout` | | ✓ | ✓ | ✓ | Protected token revocation |
 | `GetCurrentUser` | | ✓ | ✓ | ✓ | Get logged in profile |
-| `LogWorkout` / `GetMyQR` | | ✓ | | | Customer features (active membership checked) |
+| `LogWorkout` / `ProcessScan` | | ✓ | | | Customer features (active membership checked) |
 | `AcceptBooking` / `SetAvailability` | | | ✓ | | Trainer operations |
 | `CreateTrainerAccount` | | | | ✓ | Admin registers new staff |
 | `SuspendUser` | | | | ✓ | Suspend any account |
@@ -176,7 +192,7 @@ When a user logs out:
 When an Admin suspends a user:
 1. Identity Service marks user status as `SUSPENDED` in PostgreSQL.
 2. Identity Service revokes all active `REFRESH_TOKENS` for that user.
-3. Identity Service publishes `identity.user.suspended` event to Kafka.
+3. Identity Service publishes `identity.user.suspended.v1` event to Kafka.
 4. **Member Service** consumes event → Sets member status to `SUSPENDED`, cancels any active subscriptions.
 5. **Trainer Service** consumes event:
    - If user was a Trainer → Sets trainer status to `SUSPENDED`, cancels all future bookings, publishes `booking.cancelled` (triggering full refunds via Payment Service).
@@ -208,9 +224,9 @@ sequenceDiagram
 
 | Topic | Key | Payload | Consumed By |
 |-------|-----|---------|-------------|
-| `identity.user.registered` | `user_id` | `{user_id, email, full_name, role, gym_id}` | Member Service (create member profile) |
-| `identity.user.role-changed` | `user_id` | `{user_id, old_role, new_role, gym_id}` | — |
-| `identity.user.suspended` | `user_id` | `{user_id, role, gym_id}` | Member Service, Trainer Service |
+| `identity.user.registered.v1` | `user_id` | `{user_id, email, full_name, role, gym_id}` | Member Service (create member profile) |
+| `identity.user.role-changed.v1` | `user_id` | `{user_id, old_role, new_role, gym_id}` | — |
+| `identity.user.suspended.v1` | `user_id` | `{user_id, role, gym_id}` | Member Service, Trainer Service |
 
 ---
 

@@ -79,8 +79,8 @@ sequenceDiagram
     IS->>IS: Verify: revoked == false && expires_at > now
     
     alt Token Valid
-        IS->>MS: gRPC GetMembershipStatus(user_id) (Internal sync check)
-        MS-->>IS: {membership_status: "ACTIVE" | "EXPIRED" | "PAUSED"}
+        IS->>MS: gRPC GetMembershipStatusByUserId(user_id)<br/>(mTLS; verified Identifier peer)
+        MS-->>IS: {membership_status: "NONE" | "ACTIVE" | "PAUSED" | "EXPIRED"}
         
         IS->>IS: Generate new JWT Access Token with latest membership_status
         IS->>IS: Generate new Refresh Token (Refresh Token Rotation)
@@ -118,9 +118,9 @@ sequenceDiagram
     IS->>IS: Hash password (bcrypt)
     IS->>IS: INSERT user (role=CUSTOMER)
     IS->>IS: Generate JWT access + refresh tokens
-    IS->>KF: Publish identity.user.registered
+    IS->>KF: Publish identity.user.registered.v1
     IS-->>APP: {access_token, refresh_token}
-    KF-->>MS: Consume user.registered
+    KF-->>MS: Consume identity.user.registered.v1
     MS->>MS: Create member shell (status=NONE)
     end
 
@@ -145,20 +145,19 @@ sequenceDiagram
     PS->>PS: Verify HMAC signature
     PS->>PS: Update payment COMPLETED
     PS->>PRS: gRPC ConfirmReservation(reservation_id, payment_id, discount_amount_vnd)
-    PS->>KF: Publish payment.completed
+    PS->>KF: Publish payment.completed.v1
     end
 
     rect rgb(230, 255, 230)
     Note over MS,NS: Phase 3: Activation
-    KF-->>MS: Consume payment.completed (type=MEMBERSHIP)
+    KF-->>MS: Consume payment.completed.v1 (type=MEMBERSHIP)
     MS->>MS: Create subscription status=ACTIVE end_date=today+30d
-    MS->>MS: Generate QR secret for member
-    MS->>KF: Publish membership.activated
+    MS->>KF: Publish membership.activated.v1
 
-    KF-->>NS: Consume payment.completed
+    KF-->>NS: Consume payment.completed.v1
     NS->>NS: Send payment receipt (email)
 
-    KF-->>NS: Consume membership.activated
+    KF-->>NS: Consume membership.activated.v1
     NS->>NS: Send welcome SMS
     end
 ```
@@ -185,7 +184,7 @@ sequenceDiagram
 
     alt New user
         IS->>IS: INSERT user (provider=GOOGLE, provider_id=sub)
-        IS->>KF: Publish identity.user.registered
+        IS->>KF: Publish identity.user.registered.v1
         KF-->>MS: Create member shell
     else Existing user
         IS->>IS: Lookup by email found
@@ -199,51 +198,69 @@ sequenceDiagram
 
 ## 4. QR Check-in at Gym
 
+### Display provisioning and refresh
+
+```mermaid
+sequenceDiagram
+    actor A as Admin
+    participant K as Kong Gateway
+    participant CS as Check-in Service
+    participant MS as Member Service
+    participant D as Display Kiosk
+
+    A->>K: POST /api/v1/checkin/devices<br/>{gym_id, device_name} (Admin JWT)
+    K->>CS: RegisterDevice
+    CS->>MS: GetGymLocation(gym_id)<br/>(verified workload channel)
+    MS-->>CS: Canonical ACTIVE gym location
+    CS->>CS: Provision versioned gym root key and kiosk credential
+    CS-->>A: {device_id, api_secret} (returned once)
+    A->>D: Install device credential securely
+
+    loop Before current and next payload expire
+        D->>K: GET /api/v1/checkin/display/qr<br/>(device credential)
+        K->>CS: GetDisplayQrPayload
+        CS-->>D: Current + next 60-second signed payloads
+        D->>D: Switch QR at the UTC slot boundary
+    end
+```
+
+### Member scan
+
 ```mermaid
 sequenceDiagram
     actor M as Member
     participant APP as Mobile App
-    participant S as Display Screen<br/>(Displays Daily QR)
+    participant D as Display Kiosk
     participant K as Kong Gateway
     participant CS as Check-in Service
-    participant R as Redis
     participant MS as Member Service
     participant KF as Kafka
     participant AS as Analytics
 
-    Note over S: Display Screen shows static/daily QR code<br/>containing base64(gym_id + daily_token)
-    M->>APP: Open app, log in
-    M->>APP: Scan QR code shown on Display Screen
-    
-    APP->>K: POST /api/v1/checkin/scan<br/>{qr_payload, gym_id} (Bearer JWT)
-    K->>K: Rate limit 5/sec per user
-    K->>CS: gRPC ProcessScan(member_id, gym_id, qr_payload)
+    Note over D: Display signed QR for the current 60-second UTC slot
+    M->>APP: Scan QR shown on kiosk
+    APP->>K: POST /api/v1/checkin/scan<br/>{member_id, gym_id, qr_payload} (Bearer JWT)
+    K->>K: Validate JWT and rate limit 5/sec per user
+    K->>CS: ProcessScan with trusted claims
 
-    CS->>CS: Decode qr_payload<br/>→ extract scanned_gym_id + daily_token
+    CS->>CS: Parse v1 payload and require signed gym == request gym
+    CS->>CS: Verify device, key version, current/previous slot,<br/>and HMAC-SHA256 in constant time
+    CS->>MS: ValidateMembership(member_id, gym_id)<br/>(verified workload channel)
+    MS-->>CS: {valid, status}
 
-    CS->>R: GET gym:gym_id:qr_secret
-    alt Cache HIT
-        R-->>CS: daily_secret
-    else Cache MISS
-        CS->>MS: gRPC GetGymDailySecret(gym_id)
-        MS-->>CS: {daily_secret}
-        CS->>R: SET gym:gym_id:qr_secret TTL=12h
-    end
-
-    CS->>CS: expected_token = SHA256(gym_id + today_date + daily_secret)
-    CS->>CS: Compare expected_token vs scanned daily_token
-
-    alt Valid token + active membership
-        CS->>CS: INSERT check_in (YugabyteDB)
-        CS->>KF: Publish checkin.recorded
-        CS-->>K: Return {success: true, message: "Check-in thành công"}
-        K-->>APP: Return {success: true, message: "Check-in thành công"} ✅
+    alt Valid QR and active membership
+        CS->>CS: INSERT check_in + outbox event atomically
+        CS-->>K: {success: true, message: "Check-in thành công"}
+        K-->>APP: {success: true, message: "Check-in thành công"}
+        CS->>KF: Publish checkin.recorded.v1
         KF-->>AS: Update daily_attendance + member_activity
-    else Invalid / Expired / Mismatch
-        CS-->>K: Return {success: false, message: "Mã QR không hợp lệ"}
-        K-->>APP: Return {success: false, message: "Không hợp lệ"} ❌
+    else Invalid, expired, revoked, or unauthorized
+        CS-->>K: {success: false, message: "Mã QR không hợp lệ"}
+        K-->>APP: {success: false, message: "Không hợp lệ"}
     end
 ```
+
+Check-in owns the root key; no raw QR secret crosses the Member boundary. If the kiosk cannot refresh, it may use only its prefetched next payload and must show unavailable after that payload expires.
 
 ---
 
@@ -329,12 +346,12 @@ sequenceDiagram
     APP->>PP: Open Momo
     C->>PP: Pay
     PP->>PS: Webhook COMPLETED
-    PS->>KF: payment.completed type=TRAINER_BOOKING
+    PS->>KF: payment.completed.v1 type=TRAINER_BOOKING
     end
 
     rect rgb(230, 255, 230)
     Note over TS,T: Trainer Approval
-    KF-->>TS: Consume payment.completed
+    KF-->>TS: Consume payment.completed.v1
     TS->>TS: Update booking REQUESTED
 
     TS->>KF: Publish booking.requested
@@ -380,7 +397,7 @@ sequenceDiagram
 
     MS->>MS: remaining_days = end_date - today
     MS->>MS: Update status=PAUSED paused_at=now()
-    MS->>KF: Publish membership.paused
+    MS->>KF: Publish membership.paused.v1
 
     KF-->>NS: Send confirmation SMS
 
@@ -396,7 +413,7 @@ sequenceDiagram
     MS->>MS: new_end_date = today + remaining_days
     MS->>MS: Update status=ACTIVE end_date=new_end_date paused_at=null
 
-    MS->>KF: Publish membership.resumed
+    MS->>KF: Publish membership.resumed.v1
     MS-->>APP: {status ACTIVE, end_date 2025-02-15}
     end
 ```
@@ -459,10 +476,10 @@ sequenceDiagram
     CRON->>MS: Find subscriptions where end_date = today + 7 days AND status = ACTIVE
 
     loop For each expiring member
-        MS->>KF: membership.expiring-soon
+        MS->>KF: membership.expiring-soon.v1
     end
 
-    KF-->>NS: Consume membership.expiring-soon
+    KF-->>NS: Consume membership.expiring-soon.v1
 
     NS->>NS: Load notification template
 
@@ -487,7 +504,7 @@ sequenceDiagram
     A->>DASH: Create trainer (name, email, gym_id)
     DASH->>IS: gRPC CreateTrainerAccount(email, temp_password, gym_id)
     IS->>IS: INSERT user role=TRAINER
-    IS->>KF: identity.user.registered role TRAINER
+    IS->>KF: identity.user.registered.v1 role TRAINER
     IS-->>DASH: {user_id}
 
     DASH->>TS: gRPC CreateTrainer(user_id, gym_id, specialties, rate)

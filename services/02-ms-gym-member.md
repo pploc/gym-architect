@@ -8,8 +8,9 @@
 - Subscription plans: `MONTHLY`, `YEARLY`, `LIFETIME`
 - Pause / resume with remaining days calculation (not applicable to LIFETIME)
 - Member profile management (name, phone, avatar, emergency contact)
-- **Gym location management** — owns `gym_locations` and `gym_qr_secrets` tables
-- Gym QR daily token generation — produces token for gym door screens
+- **Gym location management** — owns the canonical `gym_locations` table
+- Gym and membership authorization for Check-in through `GetGymLocation` and `ValidateMembership`
+- Check-in owns kiosk credentials, QR root keys, payload issuance, and validation
 - Spending history query (delegates to Payment Service)
 - Multi-gym: each member belongs to a `gym_id`
 
@@ -21,7 +22,7 @@
 stateDiagram-v2
     [*] --> NONE: user.registered event
 
-    NONE --> ACTIVE: payment.completed (membership)
+    NONE --> ACTIVE: payment.completed.v1 (membership)
 
     ACTIVE --> PAUSED: member requests pause
     ACTIVE --> EXPIRED: end_date reached (scheduled job)
@@ -29,9 +30,9 @@ stateDiagram-v2
     PAUSED --> ACTIVE: member requests resume
     PAUSED --> EXPIRED: remaining_days = 0 & no resume
 
-    EXPIRED --> ACTIVE: payment.completed (renewal)
+    EXPIRED --> ACTIVE: payment.completed.v1 (renewal)
 
-    ACTIVE --> ACTIVE: payment.completed (renewal extends end_date)
+    ACTIVE --> ACTIVE: payment.completed.v1 (renewal extends end_date)
 
     note right of ACTIVE
         LIFETIME members never
@@ -76,12 +77,6 @@ erDiagram
         timestamp created_at
     }
 
-    GYM_QR_SECRETS {
-        uuid gym_id FK
-        varchar daily_secret "random 32-byte key"
-        timestamp updated_at
-    }
-
     MEMBERS {
         uuid id PK
         uuid user_id FK "from Identity Service"
@@ -119,7 +114,6 @@ erDiagram
         timestamp created_at
     }
 
-    GYM_LOCATIONS ||--|| GYM_QR_SECRETS : "has secret"
     GYM_LOCATIONS ||--o{ MEMBERS : "belongs to"
     GYM_LOCATIONS ||--o{ MEMBERSHIP_PLANS : "offers"
     MEMBERS ||--o{ SUBSCRIPTIONS : "has"
@@ -128,38 +122,24 @@ erDiagram
 
 ---
 
-## Gym QR — Daily Token Generation
+## Check-in Integration Boundary
 
-The gym display screen displays a QR code containing a daily-rotating token.
-The **Member Service** owns the QR secret and generates the daily token.
-The **Check-in Service** calls Member Service to validate the token.
+Member Service remains the source of truth for gym locations and membership state. The future Check-in Service owns display kiosks, versioned QR root keys, short-lived HMAC payload issuance, and QR validation.
 
+```text
+Kiosk provisioning:
+  1. An admin calls Check-in RegisterDevice(gym_id, device_name).
+  2. Check-in calls Member GetGymLocation(gym_id) over a verified workload channel.
+  3. Member returns the canonical location; Check-in requires status ACTIVE.
+  4. Check-in provisions its own root key and device credential.
+
+Member scan:
+  1. Check-in validates the signed QR locally.
+  2. Check-in calls Member ValidateMembership(member_id, gym_id).
+  3. Member confirms ACTIVE status and the required gym scope.
 ```
-QR Content (displayed on gym display screen):
-  base64(gym_id + ":" + daily_token)
 
-Daily Token:
-  daily_token = SHA256(gym_id + today_date + daily_secret)
-
-daily_secret:
-  - Per-gym secret stored in gym_qr_secrets table
-  - Rotated periodically by admin (invalidates current QR immediately)
-
-Flow:
-  1. Scheduled job runs at 00:00 daily
-  2. For each ACTIVE gym_location:
-     token = SHA256(gym_id + today + daily_secret)
-     qr_payload = base64(gym_id + ":" + token)
-  3. Gym display screen fetches or updates latest QR payload
-  4. Screen renders QR
-
-Validation (by Check-in Service):
-  1. Member scans gym display screen QR with phone app
-  2. App sends qr_payload + JWT to Check-in Service
-  3. Check-in Service calls Member Service GetGymDailySecret(gym_id)
-  4. Check-in Service recomputes: expected = SHA256(gym_id + today + daily_secret)
-  5. Compare expected vs scanned daily_token
-```
+Member's public contract exposes no QR secret API. Existing Member implementation cleanup is separate work: remove its QR classes and scheduler, and drop `gym_qr_secrets` through a new Flyway migration rather than modifying the deployed initial migration.
 
 ---
 
@@ -169,19 +149,19 @@ Validation (by Check-in Service):
 
 | Topic | Key | Trigger | Payload |
 |-------|-----|---------|---------|
-| `membership.activated` | `member_id` | Payment completed | `{member_id, user_id, plan_type, start_date, end_date, gym_id, is_renewal, timestamp}` |
-| `membership.paused` | `member_id` | Member pauses | `{member_id, paused_at, remaining_days, gym_id}` |
-| `membership.resumed` | `member_id` | Member resumes | `{member_id, new_end_date, gym_id}` |
-| `membership.expiring-soon` | `member_id` | Scheduled job (7d before) | `{member_id, end_date, plan_type, gym_id}` |
-| `membership.expired` | `member_id` | Scheduled job (end_date reached) | `{member_id, expired_at, gym_id}` |
+| `membership.activated.v1` | `member_id` | Payment completed | `{member_id, user_id, plan_type, start_date, end_date, gym_id, is_renewal, timestamp}` |
+| `membership.paused.v1` | `member_id` | Member pauses | `{member_id, paused_at, remaining_days, gym_id}` |
+| `membership.resumed.v1` | `member_id` | Member resumes | `{member_id, new_end_date, gym_id}` |
+| `membership.expiring-soon.v1` | `member_id` | Scheduled job (7d before) | `{member_id, end_date, plan_type, gym_id}` |
+| `membership.expired.v1` | `member_id` | Scheduled job (end_date reached) | `{member_id, expired_at, gym_id}` |
 
 ### Consumed
 
 | Topic | Action |
 |-------|--------|
-| `identity.user.registered` | Create member shell (status=NONE) |
-| `identity.user.suspended` | Freeze member profile, cancel active subscription |
-| `payment.completed` (type=MEMBERSHIP) | Activate or renew subscription |
+| `identity.user.registered.v1` | Create member shell (status=NONE) |
+| `identity.user.suspended.v1` | Freeze member profile, cancel active subscription |
+| `payment.completed.v1` (type=MEMBERSHIP) | Activate or renew subscription |
 
 ---
 
@@ -189,9 +169,8 @@ Validation (by Check-in Service):
 
 | Job | Schedule | Action |
 |-----|----------|--------|
-| Gym QR Token Rotation | `0 0 * * *` (midnight) | Generate daily QR tokens for all ACTIVE gym locations |
 | Expiry Check | `0 6 * * *` (6 AM) | Find subscriptions where `end_date <= today`, set EXPIRED |
-| Expiry Warning | `0 9 * * *` (9 AM) | Find subscriptions where `end_date = today + 7d`, publish `membership.expiring-soon` |
+| Expiry Warning | `0 9 * * *` (9 AM) | Find subscriptions where `end_date = today + 7d`, publish `membership.expiring-soon.v1` |
 
 ---
 
@@ -211,6 +190,10 @@ service MemberService {
   rpc ResumeMembership(ResumeMembershipRequest) returns (MembershipResponse);
   rpc GetMembershipStatus(GetMembershipStatusRequest) returns (MembershipResponse);
 
+  // Internal: requires verified ms-gym-identifier workload identity; no HTTP mapping.
+  rpc GetMembershipStatusByUserId(GetMembershipStatusByUserIdRequest)
+      returns (MembershipResponse);
+
   // Gym Location Management (Admin)
   rpc CreateGymLocation(CreateGymLocationRequest) returns (GymLocationResponse);
   rpc UpdateGymLocation(UpdateGymLocationRequest) returns (GymLocationResponse);
@@ -219,22 +202,34 @@ service MemberService {
 
   // Internal-Only (blocked at API Gateway from external HTTP routing)
   rpc ValidateMembership(ValidateMembershipRequest) returns (ValidateMembershipResponse);
-  rpc GetGymDailySecret(GetGymDailySecretRequest) returns (GymDailySecretResponse);
   rpc ListMembersByStatus(ListMembersByStatusRequest) returns (ListMembersByStatusResponse);
 }
+
+message GetMembershipStatusByUserIdRequest {
+  string user_id = 1;
+}
 ```
+
+`GetMembershipStatus(member_id)` remains unchanged. The user-ID lookup returns
+`NONE` for a known user with no subscription. If Member cannot answer, it returns
+an availability failure and Identifier does not guess. `user_id`, `member_id`,
+and `gym_id` remain separate opaque identifiers.
 
 ---
 
 ## Internal Route Security
 
-Internal-only gRPC methods (`ValidateMembership`, `GetGymDailySecret`, `ListMembersByStatus`) are blocked from external access:
-1. **Kong Routing:** Kong only registers routes for public endpoints. Internal method paths are not mapped.
-2. **Network Policies:** K8s network policies restrict gRPC ingress on port 50051 to Kong and authorized service pods only.
+Internal-only gRPC methods (`GetMembershipStatusByUserId`, `ValidateMembership`,
+`ListMembersByStatus`) are blocked from external access:
+1. **Kong Routing:** Kong only registers routes for public endpoints. Internal method paths are not mapped in the `*_http.yaml` source of truth.
+2. **Verified workload channel:** internal callers use mTLS; the certificate identity/SAN identifies the workload and a caller-supplied role or `x-service-id` header alone establishes no trust. `GetMembershipStatusByUserId` authorizes only the verified `ms-gym-identifier` peer.
+3. **Network Policies:** K8s network policies restrict native gRPC ingress on port `50051` to authorized service pods, including the Identifier-to-Member path.
 
 ---
 
-## Clean Architecture
+## Target Clean Architecture
+
+The current Member repository may still contain QR implementation classes until its separate cleanup is completed; they are not part of the target service contract.
 
 ```
 src/main/java/com/gym/member/
@@ -245,8 +240,7 @@ src/main/java/com/gym/member/
 │   │   ├── MembershipPlan.java
 │   │   ├── MembershipStatus.java          // enum
 │   │   ├── PlanType.java                   // MONTHLY, YEARLY, LIFETIME
-│   │   ├── GymLocation.java
-│   │   └── GymQRSecret.java
+│   │   └── GymLocation.java
 │   ├── exception/
 │   │   ├── MemberNotFoundException.java
 │   │   ├── CannotPauseLifetimeException.java
@@ -261,21 +255,17 @@ src/main/java/com/gym/member/
 │   │   │   ├── PauseMembershipUseCase.java
 │   │   │   ├── ResumeMembershipUseCase.java
 │   │   │   ├── ManageGymLocationUseCase.java
-│   │   │   ├── GenerateGymQRUseCase.java
 │   │   │   └── ListMembersByStatusUseCase.java
 │   │   └── out/
 │   │       ├── MemberRepository.java
 │   │       ├── SubscriptionRepository.java
 │   │       ├── GymLocationRepository.java
-│   │       ├── GymQRSecretRepository.java
 │   │       ├── PaymentClient.java
 │   │       └── EventPublisher.java
 │   ├── service/
 │   │   ├── MembershipService.java
-│   │   ├── GymLocationService.java
-│   │   └── GymQRService.java
+│   │   └── GymLocationService.java
 │   └── scheduler/
-│       ├── GymQRRotationJob.java
 │       ├── ExpiryCheckJob.java
 │       └── ExpiryWarningJob.java
 ├── adapter/

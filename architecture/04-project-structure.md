@@ -51,8 +51,11 @@ gym-proto/
 ```
 
 **Distribution Strategy:**
-- **Go**: Developers generate stubs locally using `make gen-go` or `make proto` (runs `buf generate` targeting Go).
-- **Java**: Stubs are published from `gym-proto` module as a Maven library `com.gym.proto:gym-proto-java` to GitHub Packages. Shared library `common-java` imports this dependency. Alternatively, developers can generate stubs locally using `make gen-java` or `make proto` (runs `buf generate` targeting Java) during development.
+- `gym-proto` generates both languages for contract verification and publication.
+- **Go**: Services consume tagged `github.com/pploc/proto-go`; generated Go stubs are not copied into service repositories.
+- **Java**: Services consume tagged `com.gym.proto:gym-proto-java`; generated Java stubs are not copied into service repositories.
+- Local `make gen-go`, `make gen-java`, or `make proto` commands preview generated artifacts inside the contract repository only.
+- Existing `proto/*/v1/*_http.yaml` files are the HTTP mapping source of truth and are wired into `buf.gen.yaml` via `grpc_api_configuration`; unbound internal methods are not exposed.
 
 ---
 
@@ -195,7 +198,7 @@ gym-chain/
 proto: gen-go gen-java
 
 gen-go:
-	cd gym-proto && buf generate --template buf.gen.yaml --path proto/ -o ../services/
+	cd gym-proto && buf generate --template buf.gen.yaml --path proto/
 
 gen-java:
 	cd gym-proto && buf generate --template buf.gen.yaml --path proto/ -o ../common-java/

@@ -26,11 +26,10 @@ common-go/
 ├── kafka/
 │   ├── producer.go              # Kafka producer wrapper (idempotent, retries)
 │   ├── consumer.go              # Consumer group wrapper (manual commit)
-│   ├── message.go               # Message envelope: {event_type, key, payload, timestamp, trace_id}
-│   └── serializer.go            # Protobuf serializer/deserializer
-├── config/
-│   ├── loader.go                # Env-based config loading (Viper)
-│   └── defaults.go              # Default ports, timeouts, retry counts
+│   ├── message.go               # Kafka record metadata; no payload envelope
+│   └── serializer.go            # Confluent-framed concrete Protobuf serializer/deserializer
+├── config/                      # Applications own configuration loading
+│   └── defaults.go              # Shared constants only; no Viper dependency
 ├── errors/
 │   ├── domain.go                # Domain error types → gRPC status code mapping
 │   └── codes.go                 # Custom error codes (GYM_001, GYM_002, ...)
@@ -40,9 +39,9 @@ common-go/
 │   └── checker.go               # gRPC health check server implementation
 ├── pagination/
 │   └── cursor.go                # Cursor-based pagination helpers
-├── crypto/
-│   ├── hash.go                  # SHA256 helper (QR token generation)
-│   └── jwt.go                   # JWT parse/validate (for services that need it)
+├── crypto/                       # Planned; not present in common-go yet
+│   ├── hmac.go                  # HMAC-SHA256 + constant-time comparison primitives
+│   └── signing.go               # Non-JWT crypto primitives; Kong validates end-user JWTs
 ├── testutil/
 │   ├── containers.go            # Testcontainers helpers (Cassandra, YugabyteDB, Kafka)
 │   ├── fixtures.go              # Test data builders
@@ -55,6 +54,19 @@ common-go/
 ### Key Components
 
 #### Auth Interceptor
+
+Canonical roles are `CUSTOMER`, `TRAINER`, `ADMIN`, and `SUPER_ADMIN`; workload
+identities are separate and never represented in `x-user-role`. Membership
+statuses are `NONE`, `ACTIVE`, `PAUSED`, and `EXPIRED`. Shared libraries trim
+and normalize trusted headers, reject conflicting duplicates, and fail closed
+when an `ACTIVE` membership is required. New customers and non-customer roles
+use `NONE`.
+
+Kong establishes trust by validating external JWTs and stripping client copies
+before claim injection. Shared libraries consume trusted claims; they do not
+perform normal downstream JWT signature validation. Workload calls establish
+trust separately through verified mTLS peer identity.
+
 ```go
 // grpc/interceptor/auth.go
 // Extracts JWT claims from gRPC metadata (set by Kong)
@@ -72,18 +84,15 @@ func AuthUnaryInterceptor() grpc.UnaryServerInterceptor {
 }
 ```
 
-#### Kafka Message Envelope
-```go
-// kafka/message.go
-type Message struct {
-    EventType string          `json:"event_type"`
-    Key       string          `json:"key"`
-    Payload   proto.Message   `json:"-"`        // Protobuf-encoded
-    Timestamp time.Time       `json:"timestamp"`
-    TraceID   string          `json:"trace_id"` // OpenTelemetry propagation
-    Source    string          `json:"source"`    // service name
-}
-```
+#### Kafka Wire Contract
+
+Kafka values are Confluent Schema Registry-framed concrete Protobuf messages;
+there is no JSON or Protobuf envelope wrapper. The domain entity key is the
+ordering key. Canonical UTF-8 headers are `event-type`, `source`, `timestamp`,
+`event-id`, `traceparent`, and optional `tracestate`. `x-trace-id` is read-only
+compatibility correlation, and new producers emit no `x-event-*` headers.
+Production uses `TopicNameStrategy`, `BACKWARD` compatibility, and
+`auto.register.schemas=false`.
 
 #### Domain Error Mapping
 ```go
@@ -138,7 +147,7 @@ common-java/
 │   │   │   ├── EventConsumer.java               # Base consumer with error handling
 │   │   │   └── RetryableConsumer.java           # DLQ on repeated failures
 │   │   ├── message/
-│   │   │   └── EventEnvelope.java               # Message envelope (matches Go)
+│   │   │   └── KafkaRecord.java                 # Record metadata; concrete Protobuf value
 │   │   └── config/
 │   │       └── KafkaAutoConfig.java             # Spring Kafka auto-configuration
 │   ├── error/
@@ -213,7 +222,7 @@ To maintain eventual consistency without locking partitions or losing messages:
 1. **Dead Letter Queue Routing:**
    - Every consumer in `common-java` and `common-go` wraps its message handler in a try-catch/retry block.
    - Transient errors (e.g., database connection timeout) trigger up to 3 retries with exponential backoff (e.g., 2s, 4s, 8s).
-   - If the error persists after 3 retries (or on a non-retryable constraint error), the consumer publishes the original key, framed value, and headers to the corresponding Dead Letter topic (e.g., `payment.completed.DLQ`). It commits the original offset only after confirmed DLQ publication.
+   - If the error persists after 3 retries (or on a non-retryable constraint error), the consumer publishes the original key, framed value, and headers to the corresponding Dead Letter topic (e.g., `payment.completed.v1.DLQ`). It commits the original offset only after confirmed DLQ publication.
 
 2. **DLQ Message Structure:**
    - The DLQ message preserves the original message envelope plus metadata headers:

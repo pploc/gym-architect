@@ -48,7 +48,7 @@ graph TB
     CLIENT -->|HTTPS/443| HA
     HA -->|TCP| KONG1 & KONG2 & KONG3
     KONG1 & KONG2 & KONG3 --> KONG_DB
-    KONG1 & KONG2 & KONG3 -->|gRPC| IS & MS & PS & WS & TS & CS & NS & AS & PRS
+    KONG1 & KONG2 & KONG3 -->|HTTP/JSON :8080| IS & MS & PS & WS & TS & CS & NS & AS & PRS
 
     IS & MS & PS & TS & PRS --> PG
     WS & NS --> CASS
@@ -140,14 +140,24 @@ plugins:
 
 # Per-route overrides
 routes:
-  # QR check-in — tight limit per device
-  - name: checkin-validate
-    paths: ["/api/v1/checkin/validate"]
+  # Member QR scans — tight limit per authenticated user
+  - name: checkin-scan
+    paths: ["/api/v1/checkin/scan"]
     plugins:
       - name: rate-limiting
         config:
           second: 5
           minute: 100
+
+  # Display refresh — identify and limit each provisioned kiosk
+  - name: checkin-display-qr
+    paths: ["/api/v1/checkin/display/qr"]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 10
+          limit_by: header
+          header_name: X-Checkin-Device-Id
 
   # Auth endpoints — prevent brute force
   - name: auth-login
@@ -202,24 +212,26 @@ routes:
 
 ### Service Routes
 
+External REST/JSON routes target each service-local gRPC-Gateway listener on HTTP port `8080`. Native internal gRPC remains on `50051` and is not exposed through these path routes.
+
 ```yaml
 services:
-  - name: ms-gym-identifier
-    url: grpc://ms-gym-identifier.default.svc.cluster.local:50051
+  - name: ms-gym-identifier-http
+    url: http://ms-gym-identifier.default.svc.cluster.local:8080
     routes:
       - paths: ["/api/v1/auth"]
 
-  - name: ms-gym-member
-    url: grpc://ms-gym-member.default.svc.cluster.local:50051
+  - name: ms-gym-member-http
+    url: http://ms-gym-member.default.svc.cluster.local:8080
     routes:
-      - paths: ["/api/v1/members", "/api/v1/memberships", "/api/v1/qr"]
+      - paths: ["/api/v1/members", "/api/v1/memberships", "/api/v1/gyms"]
 
-  - name: ms-gym-payment-grpc
-    url: grpc://ms-gym-payment.default.svc.cluster.local:50051
+  - name: ms-gym-payment-http
+    url: http://ms-gym-payment.default.svc.cluster.local:8080
     routes:
       - paths: ["/api/v1/payments"]
 
-  - name: ms-gym-payment-rest  # webhooks go directly to the HTTP Spring MVC port
+  - name: ms-gym-payment-webhooks
     url: http://ms-gym-payment.default.svc.cluster.local:8080
     routes:
       - paths: ["/api/v1/payments/webhook"]
@@ -228,56 +240,80 @@ services:
           - name: jwt
             enabled: false
 
-  - name: ms-gym-checkin
-    url: grpc://ms-gym-checkin.default.svc.cluster.local:50051
+  - name: ms-gym-checkin-http
+    url: http://ms-gym-checkin.default.svc.cluster.local:8080
     routes:
-      - paths: ["/api/v1/checkin"]
+      - name: checkin-user-and-admin
+        paths:
+          - "/api/v1/checkin/scan"
+          - "/api/v1/checkin/history"
+          - "/api/v1/checkin/daily-count"
+          - "/api/v1/checkin/devices"
+          - "/api/v1/checkin/gyms"
         plugins:
           - name: jwt
-            enabled: true  # Mobile App passes Bearer JWT when scanning QR payload
+            enabled: true
+      - name: checkin-display
+        paths: ["/api/v1/checkin/display/qr"]
+        plugins:
+          - name: jwt
+            enabled: false
+        # Check-in authenticates X-Checkin-Device-Id plus the opaque
+        # device credential and enforces the device's gym binding.
 
-  - name: ms-gym-workout
-    url: grpc://ms-gym-workout.default.svc.cluster.local:50051
+  - name: ms-gym-workout-http
+    url: http://ms-gym-workout.default.svc.cluster.local:8080
     routes:
       - paths: ["/api/v1/workouts", "/api/v1/templates"]
 
-  - name: ms-gym-trainer
-    url: grpc://ms-gym-trainer.default.svc.cluster.local:50051
+  - name: ms-gym-trainer-http
+    url: http://ms-gym-trainer.default.svc.cluster.local:8080
     routes:
       - paths: ["/api/v1/trainers", "/api/v1/bookings"]
 
-  - name: ms-gym-checkin
-    url: grpc://ms-gym-checkin.default.svc.cluster.local:50051
-    routes:
-      - paths: ["/api/v1/checkin"]
-
-  - name: ms-gym-notification
-    url: grpc://ms-gym-notification.default.svc.cluster.local:50051
+  - name: ms-gym-notification-http
+    url: http://ms-gym-notification.default.svc.cluster.local:8080
     routes:
       - paths: ["/api/v1/notifications"]
 
-  - name: ms-gym-analytics
-    url: grpc://ms-gym-analytics.default.svc.cluster.local:50051
+  - name: ms-gym-analytics-http
+    url: http://ms-gym-analytics.default.svc.cluster.local:8080
     routes:
       - paths: ["/api/v1/analytics"]
 
-  - name: ms-gym-promotion
-    url: grpc://ms-gym-promotion.default.svc.cluster.local:50051
+  - name: ms-gym-promotion-http
+    url: http://ms-gym-promotion.default.svc.cluster.local:8080
     routes:
       - paths: ["/api/v1/promotions", "/api/v1/coupons"]
 ```
+
+Kong strips client-provided copies of `x-user-id`, `x-user-role`, `x-gym-id`,
+`x-membership-status`, and `x-trace-id` before injecting validated claims. The
+exact display route receives no user claims; a customer JWT cannot substitute
+for a device credential.
+
+The JWT profile is RS256 with issuer `gym-identifier`, audience `gym-api`, and
+required claims `sub`, `iss`, `aud`, `iat`, `exp`, `jti`, and `kid`. Kong must
+validate the algorithm, signature, issuer, audience, expiry, and key ID before
+claim injection. Public routes are Register, Login, Google Login, and Refresh;
+Logout and every other method are protected unless explicitly declared public.
+Current and previous public keys overlap for at least the maximum access-token
+TTL. Production signing keys come from a secret manager and are never committed.
 
 ---
 
 ## Service Mesh & Internal Network Security
 
-To ensure external clients cannot invoke internal-only gRPC endpoints (e.g. `ValidateMembership`, `GetQRSecret`, `ValidateAndReserve`):
+To ensure external clients cannot invoke internal-only gRPC endpoints such as `ValidateMembership` and `ValidateAndReserve`:
 
-1. **Kong Route Exclusions:**
-   Kong only exposes endpoints explicitly mapped under `paths`. Package-level or method-level gRPC names (like `/member.v1.MemberService/GetQRSecret`) are not declared in Kong routes and will return a `404 Not Found` if targeted from the outside.
+1. **HTTP mapping exclusions:**
+   Internal RPCs are absent from gRPC-Gateway service mappings and Kong routes. External paths target HTTP `8080`; they cannot address arbitrary native gRPC methods on `50051`.
 
-2. **Kubernetes Network Policies:**
-   Direct pod-to-pod network policies block access from outside the cluster, and only allow gRPC ingress on port 50051 from the Kong Gateway pods or other specific service pods.
+2. **Verified workload identity:**
+   Check-in calls Member `GetGymLocation` during kiosk provisioning and `ValidateMembership` during scans over an mTLS-authenticated workload channel. Metadata such as `x-service-id` is observational and is never trusted without binding it to the verified peer. QR root keys remain inside Check-in and never cross this channel.
+
+3. **Kubernetes Network Policies:**
+   Direct pod-to-pod policies block access from outside the cluster and permit native gRPC on `50051` only from explicitly authorized service workloads.
 
 ```yaml
 # Direct sample network policy in ms-gym-member
@@ -291,16 +327,11 @@ spec:
     matchLabels:
       app: ms-gym-member
   ingress:
-    # Allow gRPC from Kong Gateway
+    # Allow internal gRPC from explicitly authorized workloads.
     - from:
         - podSelector:
             matchLabels:
-              app: kong-gateway
-      ports:
-        - protocol: TCP
-          port: 50051
-    # Allow internal gRPC from ms-gym-checkin and ms-gym-payment
-    - from:
+              app: ms-gym-identifier
         - podSelector:
             matchLabels:
               app: ms-gym-checkin

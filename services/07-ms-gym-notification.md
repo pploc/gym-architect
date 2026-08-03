@@ -18,14 +18,14 @@
 ```mermaid
 flowchart LR
     subgraph "Kafka Topics"
-        E1[membership.expiring-soon]
+        E1[membership.expiring-soon.v1]
         E2[promotion.published]
         E3[booking.requested]
         E4[booking.accepted]
         E5[booking.rejected]
-        E6[payment.completed]
+        E6[payment.completed.v1]
         E7[payment.failed]
-        E8[membership.expired]
+        E8[membership.expired.v1]
     end
 
     subgraph "Notification Service"
@@ -53,13 +53,13 @@ flowchart LR
 
 | Kafka Event | Recipient | Channels | Template |
 |-------------|-----------|----------|----------|
-| `membership.expiring-soon` | Customer | SMS + Email + Push | "Thẻ tập của bạn sẽ hết hạn vào {date}. Gia hạn ngay!" |
-| `membership.expired` | Customer | SMS + Push | "Thẻ tập đã hết hạn. Gia hạn để tiếp tục tập luyện." |
+| `membership.expiring-soon.v1` | Customer | SMS + Email + Push | "Thẻ tập của bạn sẽ hết hạn vào {date}. Gia hạn ngay!" |
+| `membership.expired.v1` | Customer | SMS + Push | "Thẻ tập đã hết hạn. Gia hạn để tiếp tục tập luyện." |
 | `promotion.published` | Eligible customers | SMS + Email | "Ưu đãi {discount}%! Dùng mã {code}. Hết hạn {date}." |
 | `booking.requested` | Trainer | Push | "Yêu cầu đặt lịch mới từ {customer_name} vào {time}." |
 | `booking.accepted` | Customer | Push + SMS | "Lịch tập với HLV {trainer_name} đã được xác nhận!" |
 | `booking.rejected` | Customer | Push | "HLV {trainer_name} không thể nhận lịch. Đã hoàn tiền." |
-| `payment.completed` | Customer | Email | Payment receipt with details |
+| `payment.completed.v1` | Customer | Email | Payment receipt with details |
 | `payment.failed` | Customer | Push + SMS | "Thanh toán thất bại. Vui lòng thử lại." |
 
 ---
@@ -156,18 +156,18 @@ Enable Auto Commit: false (manual commit after processing)
 Max Poll Records: 50
 
 Topics subscribed:
-  - membership.activated
-  - membership.paused
-  - membership.resumed
-  - membership.expiring-soon
-  - membership.expired
+  - membership.activated.v1
+  - membership.paused.v1
+  - membership.resumed.v1
+  - membership.expiring-soon.v1
+  - membership.expired.v1
   - promotion.published
   - booking.requested
   - booking.accepted
   - booking.rejected
   - booking.cancelled
   - booking.auto-rejected
-  - payment.completed
+  - payment.completed.v1
   - payment.failed
   - payment.refunded
   - trainer.suspended

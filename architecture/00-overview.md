@@ -29,7 +29,7 @@ Supports 4 frontend clients (out of scope for this doc):
 | **Load Balancer** | HAProxy | L4 TCP load balancing, TLS termination |
 | **Containerization** | Kubernetes | Orchestration, scaling, service discovery |
 | **CI/CD** | GitHub Actions | Build, test, deploy pipelines |
-| **Cache** | Redis | JWT blacklist, QR daily token cache, session data |
+| **Cache** | Redis | JWT blacklist, short-lived derived QR payload cache, session data |
 | **API-First** | Protobuf (gRPC) + gRPC-Gateway (REST) | Contract-first API spec, Buf-based OpenAPI/Swagger generation |
 
 ---
@@ -108,7 +108,7 @@ graph TB
 ```
 PostgreSQL (OLTP, strong ACID, relational joins):
   ├── identity_db      — users, refresh_tokens, roles
-  ├── member_db        — members, plans, subscriptions, gym_locations, QR secrets
+  ├── member_db        — members, plans, subscriptions, gym_locations
   ├── payment_db       — payments, refunds, payment_methods, dead_letter_webhooks
   ├── trainer_db       — trainers, availability, bookings
   └── promotion_db     — promotions, coupon_reservations, coupon_redemptions
@@ -118,7 +118,7 @@ Cassandra (write-heavy, time-series, append-only):
   └── notification_ks  — notification history by user
 
 YugabyteDB (distributed SQL, strong consistency + aggregation):
-  ├── checkin_db       — check_in records, scanner_devices, gym_secrets
+  ├── checkin_db       — check-ins, kiosk devices, encrypted versioned QR root keys
   └── analytics_db     — materialized attendance, revenue, trends
 ```
 
@@ -152,18 +152,20 @@ Members belong to a specific `gym_id`. Cross-gym access is a future feature flag
 | Pattern | When | Example |
 |---------|------|---------|
 | **gRPC (sync)** | Request-response, needs immediate answer | Check-in Service → Member Service: "Is member X active?" |
-| **Kafka (async)** | Fire-and-forget, eventual consistency OK | Payment Service → `payment.completed` → Member Service activates membership |
+| **Kafka (async)** | At-least-once domain events, idempotent handling required | Payment Service → `payment.completed.v1` → Member Service activates membership |
 | **gRPC-Gateway** | External clients need REST/JSON | Mobile app → Kong → gRPC-Gateway → gRPC service |
 
 ---
 
 ## API-First and OpenAPI Generation
 
-We use **Buf (buf.build)** for our API-first proto workflow. 
+We use **Buf (buf.build)** for our API-first proto workflow.
 
-1. **Specs to Code:** Protobuf definitions (`.proto`) are compiled to generate DTOs, entity structures, and gRPC client/server stubs in Go and Java.
-2. **OpenAPI Docs:** We use the `protoc-gen-openapiv2` plugin configured in `buf.gen.yaml` to generate JSON/YAML OpenAPI (Swagger) specifications directly from the `.proto` files and their `*_http.yaml` mappings.
-3. **Swagger UI:** A central swagger-ui service in K8s aggregates these generated OpenAPI JSON specifications, providing developers and third parties with interactive REST documentation.
+1. **Specs to Code:** Protobuf definitions (`.proto`) are compiled into versioned Java and Go artifacts; generated stubs are not copied into service repositories.
+2. **HTTP mapping source of truth:** Existing `proto/*/v1/*_http.yaml` Google API service configurations are wired into `buf.gen.yaml` through `grpc_api_configuration`. Only intentionally external RPCs are mapped; unbound methods are not generated.
+3. **Listeners:** Each externally exposed service runs native internal gRPC on `50051` and a service-local gRPC-Gateway HTTP/JSON listener on `8080`.
+4. **Kong:** External path routes target HTTP `8080`. Routing an HTTP path to raw `grpc://...:50051` does not perform REST transcoding. Any future native gRPC exposure uses a separate explicit route.
+5. **OpenAPI Docs:** OpenAPI is generated from the same Protobuf and external HTTP mapping source, then aggregated by Swagger UI.
 
 ---
 
@@ -172,7 +174,7 @@ We use **Buf (buf.build)** for our API-first proto workflow.
 | Decision | Choice | Alternative Considered | Reason |
 |----------|--------|----------------------|--------|
 | Auth validation | Kong validates JWT signature; services read claims | Each service validates JWT | Centralized = no duplicated logic, faster |
-| QR mechanism | Daily-rotating GYM QR scanned by phone | Daily-rotating phone QR scanned by wall device | Device with camera is expensive/unreliable. Phone camera scanning static screen is reliable + cheaper. |
+| QR mechanism | 60-second signed gym-display QR scanned by phone | Phone QR scanned by wall device | A display kiosk is cheaper and more reliable than a camera scanner; short-lived HMAC payloads limit screenshot replay. |
 | Trainer payment | Gym pays trainer (salary) | Customer pays trainer directly | Simplifies payment flow; no split/escrow needed |
 | Event schema | Protobuf (reuse gRPC protos) | Avro + Schema Registry | One schema language for everything; less tooling overhead |
 | DB-per-service | Yes, strict isolation | Shared DB with schema separation | True microservice boundary; independent scaling and migration |
