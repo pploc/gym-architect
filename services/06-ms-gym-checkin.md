@@ -1,135 +1,228 @@
 # Check-in Service
 
-> **Tech:** Go Gin | **DB:** YugabyteDB | **Port:** 50051 (gRPC) / 8080 (REST)
+> **Tech:** Go Gin | **DB:** YugabyteDB | **Port:** 50051 (internal gRPC) / 8080 (gRPC-Gateway HTTP)
 
 ## Responsibilities
 
-- Process QR scans sent from members' Mobile Apps
-- Validate the gym's daily-rotating QR code scanned by the member
-- Verify member's status (ACTIVE) and correct location membership
-- Record check-in events and publish `checkin.recorded` events to Kafka
-- Return response within **<100ms**
+- Register and revoke entrance display kiosks
+- Own encrypted, versioned per-gym QR root keys
+- Issue short-lived signed QR payloads to authenticated kiosks
+- Validate QR scans sent by members' Mobile Apps
+- Verify active membership and correct gym through Member Service
+- Record check-ins and publish `checkin.recorded.v1` events
+- Return scan responses within **<100ms**
+
+Member Service remains the source of truth for gym locations and memberships. Check-in owns all QR key material and never retrieves or exposes a raw QR secret through another service.
 
 ---
 
-## Architecture of Check-in System
+## Architecture of the Check-in System
 
-Rather than checking a member's phone QR, the check-in system uses a **reversed scanning approach**:
+The entrance uses a **reversed scanning approach**:
 
-1. **Display Screen:**
-   - Every gym entrance has a simple display screen showing a QR code.
-   - The QR code contains: `base64(gym_id + ":" + daily_token)`.
-   - The token rotates automatically at midnight (`00:00`).
+1. An admin registers a display kiosk for an active gym.
+2. The kiosk authenticates to Check-in and fetches the current and next signed QR payload.
+3. The kiosk switches QR codes every 60 seconds.
+4. A logged-in member scans the display with the Mobile App.
+5. Check-in validates the signed payload locally, calls Member Service to validate membership, and records the check-in.
 
-2. **Customer Scanning:**
-   - The customer walks up, opens their logged-in Mobile App, and scans the QR code on the display screen.
-   - The app makes an authenticated REST API call with their JWT to the backend.
-
-3. **Check-in Processing & Verification:**
-   - On successful validation, the Check-in Service records the check-in and returns a success response directly to the app.
-   - App displays check-in confirmation (`✓ Check-in thành công`).
+The display is not a scanner. `device_id` identifies the authenticated display kiosk that issued the signed payload.
 
 ---
 
-## QR Validation Flow
+## Kiosk Provisioning
 
 ```mermaid
 sequenceDiagram
-    participant M as Member
-    participant APP as Mobile App
-    participant S as Display Screen<br/>(Displays Daily QR)
-    participant K as Kong Gateway
+    actor A as Admin
+    participant K as Kong
     participant CS as Check-in Service
-    participant R as Redis
     participant MS as Member Service
-    participant KF as Kafka
-    participant AS as Analytics
+    participant DB as checkin_db
+    participant D as Display Kiosk
 
-    Note over S: Display Screen shows QR code<br/>containing base64(gym_id:daily_token)
-    M->>APP: Scan QR code shown on Display Screen
-    
-    APP->>K: POST /api/v1/checkin/scan<br/>{qr_payload, gym_id} (Bearer JWT)
-    K->>K: Rate limit 5/sec per user
-    K->>CS: gRPC ProcessScan(member_id, gym_id, qr_payload)
-
-    CS->>CS: Decode qr_payload<br/>→ extract scanned_gym_id + daily_token
-
-    CS->>R: GET gym:gym_id:qr_secret
-    alt Cache HIT
-        R-->>CS: daily_secret
-    else Cache MISS
-        CS->>MS: gRPC GetGymDailySecret(gym_id)
-        MS-->>CS: {daily_secret}
-        CS->>R: SET gym:gym_id:qr_secret TTL=12h
-    end
-
-    CS->>CS: expected_token = SHA256(gym_id + today_date + daily_secret)
-    CS->>CS: Compare expected_token vs scanned daily_token
-
-    alt Valid token + active membership
-        CS->>CS: INSERT check_in (YugabyteDB)
-        CS->>KF: Publish checkin.recorded
-        CS-->>K: Return {success: true, message: "Check-in thành công"}
-        K-->>APP: Return {success: true, message: "Check-in thành công"} ✅
-        KF-->>AS: Update daily_attendance + member_activity
-    else Invalid / Expired / Mismatch
-        CS-->>K: Return {success: false, message: "Mã QR không hợp lệ"}
-        K-->>APP: Return {success: false, message: "Không hợp lệ"} ✗
-    end
+    A->>K: POST /api/v1/checkin/devices<br/>{gym_id, device_name} (Admin JWT)
+    K->>CS: RegisterDevice
+    CS->>MS: GetGymLocation(gym_id)<br/>(verified workload channel)
+    MS-->>CS: Gym location
+    CS->>CS: Require location status ACTIVE
+    CS->>DB: Create versioned gym root key if absent
+    CS->>DB: Store kiosk and device-secret hash
+    CS-->>A: {device_id, api_secret}<br/>(secret returned once)
+    A->>D: Install device credential securely
 ```
+
+No gym-location Kafka event is required. Provisioning synchronously verifies the canonical location through Member Service. Registering a device for a missing or closed gym fails.
+
+Device rules:
+
+- Generate a cryptographically random device secret.
+- Store only a password hash such as Argon2id; never store plaintext.
+- Return the plaintext credential only from successful registration.
+- Bind each device to one `gym_id`.
+- Support independent revocation without rotating the gym root key.
+- Store credentials in Android Keystore, a restricted kiosk-agent credential store, or equivalent—not browser `localStorage`.
 
 ---
 
-## QR Payload Structure & Security
+## Display Refresh Flow
 
+```mermaid
+sequenceDiagram
+    participant D as Display Kiosk
+    participant K as Kong
+    participant CS as Check-in Service
+    participant DB as checkin_db
+
+    D->>K: GET /api/v1/checkin/display/qr<br/>Device ID + device secret
+    K->>CS: GetDisplayQrPayload<br/>(no user JWT claims)
+    CS->>DB: Verify active device and load active root-key version
+    CS->>CS: Sign current and next UTC slots
+    CS-->>D: {current, next, slot_duration_seconds: 60}
+    D->>D: Display current payload
+    D->>D: Switch to next at active_at
+    D->>CS: Refresh before prefetched payload expires
 ```
-QR Content (displayed on Door screen):
-  base64(gym_id + ":" + daily_token)
 
-Daily Token Generation (by Member Service / Gym controller):
-  daily_token = SHA256(gym_id + "2024-12-15" + daily_secret)
+The endpoint returns current and next payloads so a brief network interruption does not blank the screen. If both payloads expire, the kiosk must show an unavailable state and stop displaying an accepted QR. Check-in does not preload hours of tokens.
 
-Daily Secret:
-  - Per-gym secret key generated randomly and rotated occasionally by admins.
-  - Used as salt to prevent token spoofing.
+---
 
-Why this is secure:
-  - Token rotates daily. An old photo of the screen will not work tomorrow.
-  - Prevent remote check-in: Mobile App can compare phone GPS location with the gym's coordinates to ensure customer is actually at the gym.
+## QR Payload and Signing
+
+Canonical payload:
+
+```text
+v1.<gym_id>.<key_version>.<device_id>.<utc_slot>.<mac_base64url>
 ```
+
+Signing input and MAC:
+
+```text
+utc_slot = floor(unix_seconds / 60)
+message  = "checkin-qr:v1|<gym_id>|<key_version>|<device_id>|<utc_slot>"
+mac      = HMAC-SHA256(root_key, message)
+```
+
+Canonicalization rules:
+
+- Use UTC Unix seconds; venue timezone and daylight-saving changes do not affect slots.
+- UUIDs use canonical lowercase text.
+- `key_version` and `utc_slot` use base-10 integers without leading zeroes.
+- MAC uses unpadded base64url.
+- Compare MACs in constant time.
+- Never include or return the root key in the payload, API response, log, metric, event, or Redis value.
+
+Validation accepts the current slot and immediately previous slot for network and clock-boundary tolerance. It rejects next, older, and malformed slots.
+
+### Root-key lifecycle
+
+- Generate a random 32-byte root key when the first kiosk is provisioned for a verified gym.
+- Encrypt root-key material at rest and identify the protecting KMS/key-encryption key.
+- Assign monotonically increasing versions.
+- Regular rotation creates a new active version and permits a short documented overlap for the retiring version.
+- Emergency rotation retires the previous version immediately.
+- Rotate root keys periodically and after suspected compromise; 60-second QR rotation does not require changing the root key every minute.
+
+---
+
+## QR Scan Flow
+
+```mermaid
+sequenceDiagram
+    actor M as Member
+    participant APP as Mobile App
+    participant D as Display Kiosk
+    participant K as Kong
+    participant CS as Check-in Service
+    participant DB as checkin_db
+    participant MS as Member Service
+    participant KF as Kafka
+
+    D-->>APP: Current 60-second signed QR
+    M->>APP: Scan QR
+    APP->>K: POST /api/v1/checkin/scan<br/>{member_id, gym_id, qr_payload} (Member JWT)
+    K->>CS: ProcessScan with trusted claims
+    CS->>CS: Parse canonical payload
+    CS->>CS: Require request gym_id == signed gym_id
+    CS->>DB: Load active device and referenced key version
+    CS->>CS: Verify HMAC for current/previous slot
+    CS->>MS: ValidateMembership(member_id, gym_id)<br/>(verified workload channel)
+    MS-->>CS: {valid, status}
+
+    alt Valid QR and active membership
+        CS->>DB: Insert check-in and outbox event atomically
+        CS-->>APP: {success: true, message: "Check-in thành công"}
+        CS->>KF: Publish checkin.recorded.v1
+    else Invalid QR or membership
+        CS-->>APP: {success: false, message: "Mã QR không hợp lệ"}
+    end
+```
+
+The authenticated identity boundary must resolve the trusted member identity. Client-supplied IDs are never authoritative. `user_id`, `member_id`, and `gym_id` remain separate opaque identifiers.
 
 ---
 
 ## Data Model (YugabyteDB)
 
 ```sql
--- YugabyteDB (PostgreSQL-compatible DDL)
+CREATE TABLE gym_qr_root_keys (
+    gym_id                UUID NOT NULL,
+    key_version           BIGINT NOT NULL,
+    encrypted_key_material BYTEA NOT NULL,
+    kms_key_id             VARCHAR(255) NOT NULL,
+    status                 VARCHAR(20) NOT NULL, -- ACTIVE | RETIRING | RETIRED
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    activated_at           TIMESTAMPTZ NOT NULL,
+    retired_at             TIMESTAMPTZ,
+    PRIMARY KEY (gym_id, key_version)
+);
 
-CREATE TABLE gym_secrets (
-    gym_id          UUID PRIMARY KEY,
-    daily_secret    VARCHAR(64) NOT NULL,    -- used for daily token generation
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE UNIQUE INDEX uq_gym_active_qr_root_key
+    ON gym_qr_root_keys (gym_id) WHERE status = 'ACTIVE';
+
+CREATE TABLE kiosk_devices (
+    id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    gym_id                UUID NOT NULL,
+    device_name           VARCHAR(255) NOT NULL,
+    api_secret_hash       VARCHAR(255) NOT NULL,
+    status                VARCHAR(20) NOT NULL, -- ACTIVE | REVOKED
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    revoked_at            TIMESTAMPTZ,
+    last_authenticated_at TIMESTAMPTZ
 );
 
 CREATE TABLE check_ins (
-    id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    member_id       UUID NOT NULL,
-    gym_id          UUID NOT NULL,
-    checked_in_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    -- Indexes for common queries
-    CONSTRAINT idx_checkin_member_date
-        UNIQUE (member_id, checked_in_at)
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    member_id     UUID NOT NULL,
+    gym_id        UUID NOT NULL,
+    device_id     UUID NOT NULL,
+    checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- For analytics: "how many check-ins at location X on date Y"
 CREATE INDEX idx_checkin_gym_date
     ON check_ins (gym_id, checked_in_at DESC);
-
--- For duplicate prevention: one check-in per member per hour
-CREATE UNIQUE INDEX idx_checkin_dedup
-    ON check_ins (member_id, date_trunc('hour', checked_in_at));
 ```
+
+Service database boundaries use opaque `gym_id` references; there is no cross-database foreign key to Member's `gym_locations` table.
+
+Redis may cache derived current/next payloads for their short TTL. YugabyteDB plus the configured encryption/KMS boundary remains the durable authority for root keys and devices.
+
+---
+
+## API and Authentication
+
+| RPC | HTTP | Authentication | Purpose |
+|---|---|---|---|
+| `ProcessScan` | `POST /api/v1/checkin/scan` | Member JWT | Validate QR and record check-in |
+| `GetCheckInHistory` | `GET /api/v1/checkin/history/{member_id}` | Member/Admin JWT with scope enforcement | Query history |
+| `GetDailyCount` | `GET /api/v1/checkin/daily-count` | Admin JWT | Query gym attendance |
+| `RegisterDevice` | `POST /api/v1/checkin/devices` | Admin JWT | Verify gym and provision kiosk |
+| `GetDisplayQrPayload` | `GET /api/v1/checkin/display/qr` | Device credential only | Fetch current and next payload |
+| `RevokeDevice` | `DELETE /api/v1/checkin/devices/{device_id}` | Admin JWT | Revoke one kiosk |
+| `RotateGymQrRootKey` | `POST /api/v1/checkin/gyms/{gym_id}/qr-root-key:rotate` | Admin JWT | Regular or emergency key rotation |
+
+Kong strips client-supplied trusted user headers before injecting validated JWT claims. The display route receives no user claims and is authenticated inside Check-in. Internal calls to Member use verified workload identity such as mTLS; `CHECKIN_SERVICE` is not a public user role.
 
 ---
 
@@ -138,65 +231,58 @@ CREATE UNIQUE INDEX idx_checkin_dedup
 ### Published
 
 | Topic | Key | Payload |
-|-------|-----|---------|
-| `checkin.recorded` | `member_id` | `{member_id, gym_id, device_id, checked_in_at}` |
+|---|---|---|
+| `checkin.recorded.v1` | `member_id` | `{member_id, gym_id, device_id, checked_in_at}` |
+
+`device_id` is the display kiosk ID extracted from the verified signed payload. No gym-location, kiosk, or QR-key lifecycle Kafka events are introduced; admin provisioning and lifecycle RPCs own those workflows.
 
 ---
 
-## API (gRPC)
+## Clean Architecture Target
 
-```protobuf
-service CheckInService {
-  // Mobile app initiates check-in by scanning
-  rpc ProcessScan(ProcessScanRequest) returns (ProcessScanResponse);
-
-  // Admin / Analytics
-  rpc GetCheckInHistory(GetCheckInHistoryRequest) returns (CheckInHistoryResponse);
-  rpc GetDailyCount(GetDailyCountRequest) returns (DailyCountResponse);
-}
-
-message ProcessScanRequest {
-  string member_id = 1;
-  string gym_id = 2;
-  string qr_payload = 3;       // base64(gym_id:daily_token)
-}
-
-message ProcessScanResponse {
-  bool success = 1;
-  string message = 2;          // welcome message or error reason (Vietnamese)
-}
-```
-
----
-
-## Clean Architecture
-
-```
+```text
 cmd/server/main.go
 internal/
 ├── domain/
-│   ├── checkin.go             // CheckIn entity
-│   └── errors.go              // ErrInvalidQR, ErrMembershipExpired
+│   ├── checkin.go
+│   ├── kiosk_device.go
+│   ├── qr_root_key.go
+│   └── errors.go
 ├── usecase/
-│   ├── process_scan.go        // ProcessScanUseCase
-│   ├── get_history.go
+│   ├── process_scan.go
+│   ├── register_device.go
+│   ├── get_display_qr_payload.go
+│   ├── revoke_device.go
+│   ├── rotate_qr_root_key.go
 │   └── port/
-│       ├── checkin_repo.go         // CheckInRepository interface
-│       ├── member_client.go        // MemberClient interface (gRPC to Member Svc)
-│       ├── qr_cache.go             // QRCache interface (Redis)
+│       ├── checkin_repo.go
+│       ├── device_repo.go
+│       ├── root_key_repo.go
+│       ├── member_client.go
 │       └── event_publisher.go
 ├── adapter/
 │   ├── grpc/
-│   │   ├── handler.go
-│   │   └── mapper.go
 │   ├── repository/
-│   │   └── yugabyte_checkin.go     // implements CheckInRepository
-│   ├── client/
-│   │   └── member_grpc_client.go   // implements MemberClient
-│   ├── cache/
-│   │   └── redis_qr_cache.go      // implements QRCache
-│   └── kafka/
-│       └── event_publisher.go
+│   ├── client/member_grpc_client.go
+│   └── kafka/event_publisher.go
 └── config/
-    └── config.go
 ```
+
+The implementation should use a transactional outbox or equivalent atomic record/event mechanism for `checkin.recorded.v1`.
+
+---
+
+## Required Implementation Tests
+
+- Deterministic HMAC test vectors and canonical payload encoding
+- Current and previous slots accepted; next, old, and malformed slots rejected
+- Wrong gym, device, key version, or MAC rejected
+- Constant-time MAC comparison
+- Device secret returned once, stored hashed, gym-bound, and revocable
+- Display endpoint returns current and next payload without exposing root material
+- Missing/closed gym rejected during provisioning
+- Customer JWT cannot authenticate as a kiosk; device credentials cannot invoke user/admin routes
+- Inactive or wrong-gym membership rejected
+- Regular rotation overlap and emergency immediate retirement
+- Expired prefetched payload and Redis-outage behavior
+- Check-in record and outbox event committed atomically

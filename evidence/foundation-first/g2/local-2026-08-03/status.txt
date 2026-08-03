@@ -1,0 +1,1 @@
+G2 technical verification passed. Exact source-tree, Registry, command-log, and fixture checksums are recorded in ../3297115bf333a3781e4248535a7c965d14cb0388--82f7ab7fb7d6e26fa6db3f076f707883b87e7d39.md. Legal POM identity metadata remains deferred; G3 is not started.

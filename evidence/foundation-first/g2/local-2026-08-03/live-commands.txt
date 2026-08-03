@@ -1,0 +1,2 @@
+java: ./gradlew kafkaContractIntegration --no-daemon (passed; Registry snapshot unchanged)
+go: make integration (passed with -race)

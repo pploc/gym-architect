@@ -1,0 +1,10 @@
+{
+	"Path": "github.com/pploc/proto-go",
+	"Version": "v1.1.0",
+	"Time": "2026-08-03T05:07:23Z",
+	"Dir": "/home/phucl/go/pkg/mod/github.com/pploc/proto-go@v1.1.0",
+	"GoMod": "/home/phucl/go/pkg/mod/cache/download/github.com/pploc/proto-go/@v/v1.1.0.mod",
+	"GoVersion": "1.26",
+	"Sum": "h1:W66zXWEe6Ylj4KfXNW7fkpOmqygzx/8OIq5cG5paeB4=",
+	"GoModSum": "h1:ScD+VqksVr30AHfaWK2tqr4fqaIJc+nuQIG8cRUw5tQ="
+}

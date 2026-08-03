@@ -1,0 +1,11 @@
+[
+  "identity.user.registered.v1-value",
+  "identity.user.role-changed.v1-value",
+  "identity.user.suspended.v1-value",
+  "membership.activated.v1-value",
+  "membership.expired.v1-value",
+  "membership.expiring-soon.v1-value",
+  "membership.paused.v1-value",
+  "membership.resumed.v1-value",
+  "payment.completed.v1-value"
+]

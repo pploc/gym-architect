@@ -21,14 +21,16 @@ contract freeze
 
 Recheck every SHA and working tree before execution.
 
-| Repository | Audited baseline | Current classification |
+| Repository | Rechecked baseline | Current classification |
 |---|---|---|
-| `gym-proto` | `develop` at `0b44daca`, tagged `v1.0.6` | Published technical baseline; contract governance incomplete |
-| `common-java` | `develop` at `c89d3d2`; only tag `v1.0.1`; source metadata `1.0.4` | Protobuf producer implemented; auth, consumer, DLQ, integration, and release blockers remain |
-| `common-go` | `develop` at `ba08285`; no tags | gRPC/auth core candidate; Kafka absent |
-| `ms-gym-member` | `develop` at `34ccbef` | Implemented service on legacy shared transport; correctness defects and refactor required |
-| `gym-infra` | Existing Helm/config repository | No executable Kong trust-boundary configuration or tests |
+| `gym-proto` | `develop` at `bc08215`; tag `v1.1.0` exists | G1 technical artifacts published; reconcile stale candidate wording while owner approval remains pending |
+| `common-java` | `develop` at `3297115`; only tag `v1.0.1` | Frozen transport and legacy-envelope removal are implemented; live release validation, current metadata, and G2 evidence remain |
+| `common-go` | `develop` at `82f7ab7`; no tags | Frozen Kafka producer/consumer/retry/DLQ source and live tests exist; reusable release validation and G2 evidence remain |
+| `ms-gym-member` | `develop` at `342377d`; one local commit ahead of origin | Still pins `gym-proto-java:1.0.6` and retains obsolete Member QR ownership; Phase 4 refactor required |
+| `gym-infra` | `develop` at `f24d64f`; one local commit ahead of origin | Shared Registry URL exists; deployable Registry/governance and Kong trust-boundary evidence remain |
 | `ms-gym-identifier` | Repository absent | Create only after its contracts and stable dependencies are ready |
+
+Rechecked on 2026-08-03. These SHAs are observations, not immutable gates; recheck them immediately before execution.
 
 ## Phase documents
 
@@ -40,6 +42,13 @@ Recheck every SHA and working tree before execution.
 6. [Phase 5 — Kong and Identifier](05-kong-identifier.md)
 
 Each phase is an implementation handoff. Execute it only after its prerequisites pass and preserve evidence for the next gate.
+
+## Current gate status
+
+- **G1:** technical release exists; reconcile contradictory publication wording without changing the immutable `v1.1.0` tag or fabricating owner approval.
+- **G2:** technically passed for the exact source trees recorded in [G2 evidence](../../evidence/foundation-first/g2/3297115bf333a3781e4248535a7c965d14cb0388--82f7ab7fb7d6e26fa6db3f076f707883b87e7d39.md). Java and Go source/static/race gates and real Kafka/Registry failure-path proof passed; no common-library artifact was tagged or published.
+- **G3:** required and not started. It needs immutable common-library RC artifacts and the bidirectional Java/Go matrix; separate G2 fixture suites do not replace it.
+- **Phase 4:** starts RC transport adoption only after G3. Its independent correctness work may proceed earlier, including removal of obsolete Member QR ownership required by the already-released G1 contract.
 
 ## Governing rules
 
