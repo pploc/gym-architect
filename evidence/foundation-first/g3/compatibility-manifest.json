@@ -1,0 +1,37 @@
+{
+  "g3": {
+    "status": "success",
+    "gymProto": {
+      "version": "v1.1.0",
+      "sha": "740e476915117ab594a6e7ee3677e6a2c39c3c80",
+      "fixturesSha256": "e5a5d0944229c9e0c97dc5e872f01e7597993e5732f2014b7d8e5efdf965a27e"
+    },
+    "protoGo": {
+      "version": "v1.1.0",
+      "sha": "6f070d25f8361e6550e0bd9a309a738d2a0dbd21"
+    },
+    "commonJava": {
+      "rcVersion": "2.0.0-rc.6",
+      "candidateRef": "candidate/v2.0.0-rc.6",
+      "sha": "3c34cf394a8d07a2459700e2972a8feebc801eee",
+      "package": "com.gym:common-java:2.0.0-rc.6",
+      "publishRunId": 30897481333
+    },
+    "commonGo": {
+      "rcVersion": "v0.3.0-rc.7",
+      "candidateRef": "candidate/v0.3.0-rc.7",
+      "sha": "a17d35ed3e951c49aa17493a19c07251a13a1fbe",
+      "module": "github.com/pploc/common-go@v0.3.0-rc.7",
+      "releaseRunId": 30897426588
+    },
+    "matrix": {
+      "runId": 30894691218,
+      "runUrl": "https://github.com/pploc/common-go/actions/runs/30894691218",
+      "javaToGo": "pass",
+      "goToJava": "pass",
+      "retryCommitDlq": "pass",
+      "registryMutation": "none"
+    },
+    "ownerApproval": "pending"
+  }
+}

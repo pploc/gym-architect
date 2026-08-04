@@ -24,8 +24,8 @@ Recheck every SHA and working tree before execution.
 | Repository | Rechecked baseline | Current classification |
 |---|---|---|
 | `gym-proto` | `develop` at `bc08215`; tag `v1.1.0` exists | G1 technical artifacts published; reconcile stale candidate wording while owner approval remains pending |
-| `common-java` | `develop` at `3297115`; only tag `v1.0.1` | Frozen transport and legacy-envelope removal are implemented; live release validation, current metadata, and G2 evidence remain |
-| `common-go` | `develop` at `82f7ab7`; no tags | Frozen Kafka producer/consumer/retry/DLQ source and live tests exist; reusable release validation and G2 evidence remain |
+| `common-java` | `candidate/v2.0.0-rc.6` at `3c34cf3`; tag `v2.0.0-rc.6` published | G3 PASSED; `com.gym:common-java:2.0.0-rc.6` published to GitHub Packages |
+| `common-go` | `candidate/v0.3.0-rc.7` at `a17d35e`; tag `v0.3.0-rc.7` published | G3 PASSED; `github.com/pploc/common-go@v0.3.0-rc.7` module published |
 | `ms-gym-member` | `develop` at `342377d`; one local commit ahead of origin | Still pins `gym-proto-java:1.0.6` and retains obsolete Member QR ownership; Phase 4 refactor required |
 | `gym-infra` | `develop` at `f24d64f`; one local commit ahead of origin | Shared Registry URL exists; deployable Registry/governance and Kong trust-boundary evidence remain |
 | `ms-gym-identifier` | Repository absent | Create only after its contracts and stable dependencies are ready |
