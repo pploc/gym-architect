@@ -4,9 +4,9 @@
 
 Reach G3 with immutable release candidates that pass one cross-language matrix, then reach G4 after `ms-gym-member` validates the Java RC and stable common releases are published.
 
-## Current status: required, blocked by G2
+## Current status: G3 PASSED
 
-No immutable-artifact Java-to-Go/Go-to-Java matrix or persisted G3 evidence exists yet. The separate library fixture suites are prerequisites, not substitutes for this phase. Do not publish the planned foundation RCs or start Member RC adoption until Phase 2 passes G2 on exact source SHAs.
+The authoritative cross-language matrix run [30894691218](https://github.com/pploc/common-go/actions/runs/30894691218) passed all Java-to-Go, Go-to-Java, retry/DLQ, and Registry immutability gates. Release candidates `com.gym:common-java:2.0.0-rc.6` and `github.com/pploc/common-go@v0.3.0-rc.7` have been published.
 
 ## Prerequisites
 
