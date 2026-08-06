@@ -1,0 +1,33 @@
+C1_register code=200 body={"status":"PENDING_VERIFICATION"}
+C2_user id=07a0eb6c-dd80-4aa6-b435-88ac936c03d3 status=PENDING_VERIFICATION
+C2_outbox 61f215db-2cf6-4cd7-908e-7eeab5cd1bfc|identity.user.registered.v1|PENDING
+C3_outbox_status=PUBLISHED
+C4_member_shell=79110967-c5e2-4708-afda-fb318f14f91c
+C4_member_count=1
+C5a_verify code=200
+C5a_claims {'sub': '07a0eb6c-dd80-4aa6-b435-88ac936c03d3', 'membership_status': 'NONE', 'gym_id': None, 'role': 'CUSTOMER', 'iss': 'gym-identifier', 'aud': 'gym-api'}
+C5_login code=200
+C6_me_spoof code=200 body={"id":"07a0eb6c-dd80-4aa6-b435-88ac936c03d3","email":"partc.1786031554@example.com","role":"CUSTOMER","status":"ACTIVE","full_name":"Part C User","email_verified":true}
+C7_refresh code=200
+C7_claims {'membership_status': 'NONE', 'gym_id': None, 'role': 'CUSTOMER'}
+C8_sub_A=ACTIVE
+C9_select code=200
+C9_claims {'gym_id': '10000000-0000-0000-0000-000000000001', 'membership_status': 'ACTIVE'}
+C9b_gymB {'gym_id': '10000000-0000-0000-0000-000000000002', 'membership_status': 'ACTIVE'}
+C10_prev_token_minted
+C10_previous_kid_me code=500 body={"code":13,"message":"Internal server error"}
+C10_current_kid_me code=200
+C11_logout code=200
+C11_me_after_logout code=401 body={"message":"Unauthorized: Token has been revoked"}
+C12_admin_login code=200
+C12_suspend code=200 body={}
+C12_login_after_suspend code=403 body={"code":7,"message":"account is suspended"}
+C12_suspend_outbox_status=PUBLISHED
+C13_malformed code=401
+C13_alg_none code=401
+C13_badiss code=401
+C13_badaud code=401
+C13_exp code=401
+C14_outbox_rows_retained=2
+C_internal_rpc code=404
+C14_outage_reg=200 user=3facd86e-4e9a-46ce-a20c-12ec905af9e9 status_down=PUBLISHING status_up=PUBLISHED

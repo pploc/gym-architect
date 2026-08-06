@@ -1,0 +1,45 @@
+{
+  "timestamp_utc": "2026-08-06T15:54:44Z",
+  "common_go": {
+    "module": "github.com/pploc/common-go@v0.3.1",
+    "sha": "8272ca9e5f84202eea15ffff4f7819c11e9e0033",
+    "tag": "v0.3.1"
+  },
+  "common_java": {
+    "package": "com.gym:common-java:2.0.0",
+    "sha": "cc86544e67be1fa7c02908612c8502071a1bb565",
+    "tag": "v2.0.0-5-gcc86544"
+  },
+  "gym_proto": {
+    "sha": "d7a88677c2a0154a49feead646732341887d247f",
+    "tag": "v2.0.0-1-gd7a8867"
+  },
+  "proto_go": {
+    "module": "github.com/pploc/proto-go@v1.2.0"
+  },
+  "gym_proto_java": {
+    "package": "com.gym.proto:gym-proto-java:2.0.0"
+  },
+  "gym_infra": {
+    "sha": "a6cf151f45515855384dd250ec020e2bcab96802",
+    "tag": "a6cf151"
+  },
+  "ms_gym_identifier": {
+    "sha": "b58b0cca763a816c55e845d0d24a78ed49a144b5",
+    "tag": "b58b0cc",
+    "replace": false,
+    "direct_franz": false
+  },
+  "ms_gym_member": {
+    "sha": "508748bb80656607832c6c39f418caebd2dd3876",
+    "tag": "508748b",
+    "mavenLocal": false
+  },
+  "kong_image": "kong:3.8-ubuntu",
+  "jwt": {
+    "iss": "gym-identifier",
+    "aud": "gym-api",
+    "alg": "RS256",
+    "access_ttl": "15m"
+  }
+}

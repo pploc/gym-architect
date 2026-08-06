@@ -1,0 +1,105 @@
+{
+  "g5": {
+    "status": "success",
+    "completedParts": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "timestampUtc": "2026-08-06T15:54:44Z",
+    "artifacts": {
+      "commonGo": {
+        "version": "v0.3.1",
+        "module": "github.com/pploc/common-go@v0.3.1",
+        "sha": "8272ca9e5f84202eea15ffff4f7819c11e9e0033"
+      },
+      "commonJava": {
+        "version": "2.0.0",
+        "package": "com.gym:common-java:2.0.0",
+        "sha": "cc86544e67be1fa7c02908612c8502071a1bb565"
+      },
+      "gymProto": {
+        "tagDescribe": "v2.0.0-1-gd7a8867",
+        "sha": "d7a88677c2a0154a49feead646732341887d247f"
+      },
+      "protoGo": {
+        "version": "v1.2.0",
+        "module": "github.com/pploc/proto-go@v1.2.0"
+      },
+      "gymProtoJava": {
+        "version": "2.0.0",
+        "package": "com.gym.proto:gym-proto-java:2.0.0"
+      },
+      "gymInfra": {
+        "sha": "a6cf151f45515855384dd250ec020e2bcab96802",
+        "kongImage": "kong:3.8-ubuntu",
+        "plugin": "gym-jwt-claims",
+        "jwt": {
+          "alg": "RS256",
+          "iss": "gym-identifier",
+          "aud": "gym-api"
+        }
+      },
+      "msGymIdentifier": {
+        "sha": "b58b0cca763a816c55e845d0d24a78ed49a144b5",
+        "go": "1.26.5",
+        "replaceDirective": false,
+        "directFranzImport": false,
+        "pins": {
+          "common-go": "v0.3.1",
+          "proto-go": "v1.2.0"
+        }
+      },
+      "msGymMember": {
+        "sha": "508748bb80656607832c6c39f418caebd2dd3876",
+        "mavenLocal": false,
+        "pins": {
+          "common-java": "2.0.0",
+          "gym-proto-java": "2.0.0"
+        }
+      }
+    },
+    "evidence": {
+      "partA": "docs/evidence/foundation-first/g5-part-a/kong-fixture-report.md",
+      "partC": "docs/evidence/foundation-first/g5-part-c/identifier-e2e-report.md",
+      "partCResults": "docs/evidence/foundation-first/g5-part-c/results.jsonl",
+      "partCVersions": "docs/evidence/foundation-first/g5-part-c/versions.json"
+    },
+    "matrix": {
+      "kongJwtClaims": "pass",
+      "kongBlacklist": "pass",
+      "identifierRegisterLoginSelectGym": "pass",
+      "identifierMemberMtls": "pass",
+      "identityRegisteredEvent": "pass",
+      "identitySuspendedEvent": "pass",
+      "dualGymMembership": "pass",
+      "outboxKafkaOutageRecovery": "pass",
+      "noReplaceNoMavenLocal": "pass"
+    },
+    "ownerApproval": "pending",
+    "controlledAdoption": {
+      "policy": "one service at a time; pin stable common-go/common-java/gym-proto artifacts; no service-local transport/auth forks",
+      "openedFor": [
+        "ms-gym-identifier",
+        "ms-gym-member"
+      ],
+      "nextCandidates": [
+        "ms-gym-payment",
+        "ms-gym-workout",
+        "ms-gym-trainer",
+        "ms-gym-checkin",
+        "ms-gym-notification",
+        "ms-gym-analytics",
+        "ms-gym-promotion"
+      ],
+      "requirementsPerService": [
+        "pin released common-go or common-java version only",
+        "pin released gym-proto / proto-go / gym-proto-java only",
+        "no replace / mavenLocal in release state",
+        "pass service contract tests against frozen JWT/header/event contracts",
+        "no local reimplementation of auth interceptors, Kafka framing, or trusted-header parsing"
+      ]
+    }
+  }
+}
