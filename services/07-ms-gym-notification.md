@@ -26,6 +26,7 @@ flowchart LR
         E6[payment.completed.v1]
         E7[payment.failed]
         E8[membership.expired.v1]
+        E9[identity.email.verification-requested.v1]
     end
 
     subgraph "Notification Service"
@@ -36,7 +37,7 @@ flowchart LR
         PUSH[Push Sender<br/>FCM]
     end
 
-    E1 & E2 & E3 & E4 & E5 & E6 & E7 & E8 --> C
+    E1 & E2 & E3 & E4 & E5 & E6 & E7 & E8 & E9 --> C
     C --> R
     R --> SMS & EMAIL & PUSH
 
@@ -60,6 +61,7 @@ flowchart LR
 | `booking.accepted` | Customer | Push + SMS | "Lịch tập với HLV {trainer_name} đã được xác nhận!" |
 | `booking.rejected` | Customer | Push | "HLV {trainer_name} không thể nhận lịch. Đã hoàn tiền." |
 | `payment.completed.v1` | Customer | Email | Payment receipt with details |
+| `identity.email.verification-requested.v1` | Customer | Email | "Xác minh email: {verification_url}" (do not log URL; store template id only) |
 | `payment.failed` | Customer | Push + SMS | "Thanh toán thất bại. Vui lòng thử lại." |
 
 ---

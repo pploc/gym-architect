@@ -68,13 +68,23 @@ sequenceDiagram
     Note over IS: Reject attempts to register TRAINER, ADMIN, or SUPER_ADMIN
     IS->>IS: Generate Bcrypt Hash of password (cost factor = 12)
     IS->>DB: INSERT INTO users (email, password_hash, role, status='PENDING_VERIFICATION', ...)
-    IS->>KF: Publish event to 'identity.user.registered.v1'
-    IS-->>C: AuthResponse (status, verification details)
-    
+    IS->>DB: INSERT email_verification_tokens (token_hash only)
+    IS->>KF: Publish 'identity.user.registered.v1' (Member shell)
+    IS->>KF: Publish 'identity.email.verification-requested.v1' (deep link for Notification)
+    IS-->>C: AuthResponse (PENDING_VERIFICATION, no tokens)
+
     Note over KF,MS: Async Member Shell Creation
     KF-->>MS: Consume 'identity.user.registered.v1'
     MS->>MS: Create Member Profile shell (status = NONE)
 ```
+
+Email verification (local accounts only):
+
+1. Identifier mints one-time opaque token (`crypto/rand` 32B → base64.RawURLEncoding raw; SHA-256 hex stored).
+2. Frontend deep link: `{PUBLIC_APP_URL}/verify-email?token={raw}` (env `PUBLIC_APP_URL`, default `http://localhost:3000`).
+3. Kafka event `identity.email.verification-requested.v1` carries `verification_url` (secret — ACL + no logs).
+4. SPA posts raw token to `POST /api/v1/auth/email/verify` → ACTIVE + gym-neutral JWT; token single-use, TTL `EMAIL_VERIFICATION_TTL` (24h), resend cooldown `EMAIL_VERIFICATION_RESEND_COOLDOWN` (60s).
+5. Google register stays ACTIVE with no verification token.
 
 ### 2. Normal Login Flow (Email/Password)
 
