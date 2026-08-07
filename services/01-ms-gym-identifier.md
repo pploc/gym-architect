@@ -62,7 +62,7 @@ sequenceDiagram
     participant KF as Kafka
     participant MS as Member Service
 
-    C->>K: POST /api/v1/auth/register {email, password, full_name, gym_id}
+    C->>K: POST /api/v1/auth/register {email, password, full_name}
     K->>IS: gRPC Register(RegisterRequest)
     IS->>IS: Validate inputs and force role=CUSTOMER
     Note over IS: Reject attempts to register TRAINER, ADMIN, or SUPER_ADMIN
@@ -111,7 +111,7 @@ sequenceDiagram
     end
 ```
 
-### 3. Token Refresh Flow (with Sync Membership Status Check)
+### 3. Token Refresh Flow (Gym-Neutral)
 
 ```mermaid
 sequenceDiagram
@@ -119,7 +119,6 @@ sequenceDiagram
     participant K as Kong Gateway
     participant IS as Identity Service
     participant DB as PostgreSQL (identity_db)
-    participant MS as Member Service (gRPC)
 
     C->>K: POST /api/v1/auth/refresh {refresh_token}
     K->>IS: gRPC RefreshToken(RefreshTokenRequest)
@@ -128,9 +127,7 @@ sequenceDiagram
     DB-->>IS: RefreshToken record
     IS->>IS: Validate: expires_at > now AND revoked == false
     alt Token Valid
-        IS->>MS: gRPC GetMembershipStatusByUserId(user_id)<br/>(mTLS; verified ms-gym-identifier peer)
-        MS-->>IS: {membership_status: "NONE" | "ACTIVE" | "PAUSED" | "EXPIRED"}
-        IS->>IS: Generate new JWT Access Token containing latest membership_status
+        IS->>IS: Generate gym-neutral JWT (membership_status=NONE, no gym_id)
         IS->>IS: Generate new Refresh Token (Refresh Token Rotation)
         IS->>DB: Mark old refresh token as revoked = true
         IS->>DB: INSERT new refresh token
@@ -139,6 +136,8 @@ sequenceDiagram
         IS-->>C: Error (401 Unauthorized / Unauthenticated)
     end
 ```
+
+`SelectGym` is the membership-aware endpoint. It requires `gym_id`, verifies the active gym, then calls `GetMembershipStatusByUserId(user_id, gym_id)` through Identifier-to-Member mTLS before issuing a selected-gym JWT.
 
 ---
 
@@ -161,16 +160,16 @@ sequenceDiagram
 
 JWT profile: `RS256`; issuer `gym-identifier`; audience `gym-api`; required
 claims `sub`, `iss`, `aud`, `iat`, `exp`, `jti`, and `kid`. Kong validates the
-algorithm, signature, issuer, audience, expiry, and key ID before injecting
+algorithm, signature, issuer, audience, numeric issued-at value, expiry, JWT ID, and key ID before injecting
 claims. Current and previous public keys overlap for at least the maximum access-token
 TTL. Tests use a committed fixture public key and test-only signer/private key;
 production keys come from a secret manager and are never committed.
 
-Public methods are Register, Login, Google Login, and Refresh. Logout and all
-other methods are protected unless explicitly documented otherwise.
+Public methods are Register, Login, Google Login, Refresh, VerifyEmail, and
+ResendEmailVerification. Logout and all other methods are protected.
 
-- `membership_status` is cached in the JWT for speed. New customers and non-customer roles use `NONE`.
-- **Force-Refresh Mechanism:** When a customer completes a membership purchase, the Mobile App receives the success screen. The app immediately calls `POST /api/v1/auth/refresh` using its stored refresh token. The Identity Service queries the Member Service via gRPC, fetches the new `ACTIVE` status, generates a new Access Token with `"membership_status": "ACTIVE"`, and returns it. This bypasses the 15-minute caching latency.
+- Login, Google Login, email verification, and Refresh issue gym-neutral tokens: `membership_status=NONE` and no `gym_id`.
+- `POST /api/v1/auth/gym` is the only membership-aware issuance path. After a membership change, a customer calls `SelectGym` again to obtain status for that selected gym.
 
 ---
 
@@ -234,7 +233,7 @@ sequenceDiagram
 
 | Topic | Key | Payload | Consumed By |
 |-------|-----|---------|-------------|
-| `identity.user.registered.v1` | `user_id` | `{user_id, email, full_name, role, gym_id}` | Member Service (create member profile) |
+| `identity.user.registered.v1` | `user_id` | `{user_id, email, full_name, role}` | Member Service (create member profile) |
 | `identity.user.role-changed.v1` | `user_id` | `{user_id, old_role, new_role, gym_id}` | — |
 | `identity.user.suspended.v1` | `user_id` | `{user_id, role, gym_id}` | Member Service, Trainer Service |
 

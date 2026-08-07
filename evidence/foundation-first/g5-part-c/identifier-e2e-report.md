@@ -1,5 +1,7 @@
 # Phase 5 Part C — Live Interoperability Evidence
 
+> Current reproducible evidence: `gym-infra/kong/run-g5.sh` on 2026-08-07 passed Identifier-led business checks through real Kong, Identifier, Member mTLS, PostgreSQL, Redis, Kafka, and Schema Registry. Member external HTTP routes remain intentionally absent. The table below retains the earlier host-dependent run as historical detail.
+
 Timestamp (UTC): see `versions.json`.
 
 ## Topology exercised

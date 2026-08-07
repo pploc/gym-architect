@@ -19,18 +19,18 @@ contract freeze
 
 ## Current baseline
 
-Recheck every SHA and working tree before execution.
+Historical baselines below predate the current Phase 5 repair. Do not use them as release evidence. Recheck every SHA, working tree, immutable tag, and resolved package checksum before validating a gate.
 
-| Repository | Rechecked baseline | Current classification |
+| Repository | Historical observation | Current classification |
 |---|---|---|
-| `gym-proto` | `develop` at `bc08215`; tag `v1.1.0` exists | G1 technical artifacts published; reconcile stale candidate wording while owner approval remains pending |
-| `common-java` | `candidate/v2.0.0-rc.6` at `3c34cf3`; tag `v2.0.0-rc.6` published | G3 PASSED; `com.gym:common-java:2.0.0-rc.6` published to GitHub Packages |
-| `common-go` | `candidate/v0.3.0-rc.7` at `a17d35e`; tag `v0.3.0-rc.7` published | G3 PASSED; `github.com/pploc/common-go@v0.3.0-rc.7` module published |
-| `ms-gym-member` | `develop` at `342377d`; one local commit ahead of origin | Still pins `gym-proto-java:1.0.6` and retains obsolete Member QR ownership; Phase 4 refactor required |
-| `gym-infra` | `develop` at `f24d64f`; one local commit ahead of origin | Shared Registry URL exists; deployable Registry/governance and Kong trust-boundary evidence remain |
-| `ms-gym-identifier` | Repository absent | Create only after its contracts and stable dependencies are ready |
+| `gym-proto` | `develop` at `bc08215`; tag `v1.1.0` exists | Historical observation; immutable release provenance requires revalidation |
+| `common-java` | `candidate/v2.0.0-rc.6` at `3c34cf3`; tag `v2.0.0-rc.6` published | Historical observation; G3/G4 must be revalidated against immutable release artifacts |
+| `common-go` | `candidate/v0.3.0-rc.7` at `a17d35e`; tag `v0.3.0-rc.7` published | Historical observation; G3/G4 must be revalidated against immutable release artifacts |
+| `ms-gym-member` | `develop` at `342377d`; one local commit ahead of origin | Historical observation; current workload mTLS and dependency validation pending |
+| `gym-infra` | `develop` at `f24d64f`; one local commit ahead of origin | Historical observation; current Kong fixture and real topology validation pending |
+| `ms-gym-identifier` | Repository absent | Stale: repository exists; current dependency and live-topology validation pending |
 
-Rechecked on 2026-08-03. These SHAs are observations, not immutable gates; recheck them immediately before execution.
+Historical snapshot date: 2026-08-03.
 
 ## Phase documents
 
@@ -45,10 +45,12 @@ Each phase is an implementation handoff. Execute it only after its prerequisites
 
 ## Current gate status
 
-- **G1:** technical release exists; reconcile contradictory publication wording without changing the immutable `v1.1.0` tag or fabricating owner approval.
-- **G2:** technically passed for the exact source trees recorded in [G2 evidence](../../evidence/foundation-first/g2/3297115bf333a3781e4248535a7c965d14cb0388--82f7ab7fb7d6e26fa6db3f076f707883b87e7d39.md). Java and Go source/static/race gates and real Kafka/Registry failure-path proof passed; no common-library artifact was tagged or published.
-- **G3:** required and not started. It needs immutable common-library RC artifacts and the bidirectional Java/Go matrix; separate G2 fixture suites do not replace it.
-- **Phase 4:** starts RC transport adoption only after G3. Its independent correctness work may proceed earlier, including removal of obsolete Member QR ownership required by the already-released G1 contract.
+- **G1:** historical release evidence exists; immutable artifact provenance must be revalidated without fabricating owner approval.
+- **G2:** historical technical evidence exists for its recorded source trees; it is not proof for newer sources.
+- **G3:** historical release claims conflict with the baseline and require immutable artifact and cross-language-matrix revalidation.
+- **G4:** historical service-validation evidence exists; revalidate immutable pins on each release.
+- **G5:** passed Identifier-led Kong/Identifier/Member business E2E via `gym-infra/kong/run-g5.sh`; Member external HTTP remains intentionally unexposed until a real Member gateway exists.
+- **Phase 4:** independent correctness work may proceed, but promotion requires its current gate evidence.
 
 ## Governing rules
 

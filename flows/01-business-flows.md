@@ -60,7 +60,7 @@ sequenceDiagram
     end
 ```
 
-### Token Refresh Flow (with Sync Status Check)
+### Token Refresh Flow (Gym-Neutral)
 
 ```mermaid
 sequenceDiagram
@@ -68,30 +68,24 @@ sequenceDiagram
     participant K as Kong Gateway
     participant IS as Identity Service
     participant DB as PostgreSQL (identity_db)
-    participant MS as Member Service
 
     APP->>K: POST /api/v1/auth/refresh {refresh_token}
     K->>IS: gRPC RefreshToken(RefreshTokenRequest)
-    
     IS->>DB: SELECT * FROM refresh_tokens WHERE token_hash = SHA256(refresh_token)
     DB-->>IS: RefreshToken record (revoked status, expiration)
-    
     IS->>IS: Verify: revoked == false && expires_at > now
-    
     alt Token Valid
-        IS->>MS: gRPC GetMembershipStatusByUserId(user_id)<br/>(mTLS; verified Identifier peer)
-        MS-->>IS: {membership_status: "NONE" | "ACTIVE" | "PAUSED" | "EXPIRED"}
-        
-        IS->>IS: Generate new JWT Access Token with latest membership_status
+        IS->>IS: Generate gym-neutral JWT (membership_status=NONE, no gym_id)
         IS->>IS: Generate new Refresh Token (Refresh Token Rotation)
         IS->>DB: Mark old refresh token as revoked = true
         IS->>DB: INSERT new refresh token
-        
         IS-->>APP: Return {access_token, refresh_token}
     else Invalid
         IS-->>APP: Return error (401 Unauthorized)
     end
 ```
+
+`POST /api/v1/auth/gym` is the membership-aware token path. It accepts an authenticated customer and explicit `gym_id`, verifies the active gym, then calls Member `GetMembershipStatusByUserId(user_id, gym_id)` through verified mTLS. The resulting selected-gym token contains that gym and its `NONE`, `ACTIVE`, `PAUSED`, or `EXPIRED` status.
 
 ---
 
@@ -114,12 +108,12 @@ sequenceDiagram
     Note over C,IS: Phase 1: Registration
     C->>APP: Sign up (email + password)
     APP->>K: POST /api/v1/auth/register
-    K->>IS: gRPC Register(email, password, gym_id)
+    K->>IS: gRPC Register(email, password, full_name)
     IS->>IS: Hash password (bcrypt)
-    IS->>IS: INSERT user (role=CUSTOMER)
-    IS->>IS: Generate JWT access + refresh tokens
+    IS->>IS: INSERT chain-wide user (role=CUSTOMER)
+    IS->>IS: Require email verification before issuing tokens
     IS->>KF: Publish identity.user.registered.v1
-    IS-->>APP: {access_token, refresh_token}
+    IS-->>APP: {status: PENDING_VERIFICATION, no tokens}
     KF-->>MS: Consume identity.user.registered.v1
     MS->>MS: Create member shell (status=NONE)
     end

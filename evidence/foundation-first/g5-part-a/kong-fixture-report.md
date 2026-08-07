@@ -1,4 +1,6 @@
-# Phase 5 Part A — Kong Fixture Evidence
+# Phase 5 Part A — Kong Fixture Evidence (Historical)
+
+> Historical execution from `2026-08-04T15:58:58Z`. It predates current route, claim-validation, trace-header, and mTLS changes. It is not current G5 evidence; revalidation is blocked until the current fixture suite runs.
 
 Timestamp (UTC): `2026-08-04T15:58:58Z`
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-G5 Parts A–C closed with evidence. Part D records matrix + adoption gate.
+G5 passed for Identifier-led Kong/Member interoperability. Part D records the matrix and controlled-adoption gate.
 
 - Compatibility matrix: `compatibility-manifest.json`
 - Owner approvals: **pending** (no human sign-off supplied this session)

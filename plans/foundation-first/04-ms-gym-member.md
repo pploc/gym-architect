@@ -302,14 +302,13 @@ Rewrite test seeders to publish concrete Protobuf with canonical headers. Remove
 
 ### C2. CI
 
-Update `.github/workflows/ci.yml` to run:
+Update `.github/workflows/ci.yml` to run the checked-in Gradle tasks that exist at validation time, at minimum:
 
 ```bash
 ./gradlew clean check
-./gradlew kafkaContractIntegration
 ```
 
-Include coverage verification and live Kafka/Registry tests. A job running only `test` is insufficient.
+Add a Kafka/Registry integration task only with its implementation and a runnable CI topology. Do not document a nonexistent `kafkaContractIntegration` command.
 
 ### C3. Greenfield initial deployment
 
@@ -328,8 +327,9 @@ Rollback stops affected producers/consumers while retaining topics, subjects, of
 ```bash
 cd /home/phucl/Workplace/gapi/ms-gym-member
 ./gradlew clean check
-./gradlew kafkaContractIntegration
 ```
+
+Run Kafka/Registry integration only through an implemented, checked-in task and topology.
 
 Also:
 

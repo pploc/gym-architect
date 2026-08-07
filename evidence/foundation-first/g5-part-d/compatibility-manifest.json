@@ -1,38 +1,67 @@
 {
   "g5": {
     "status": "success",
+    "evidenceStatus": "current",
     "completedParts": [
       "A",
       "B",
       "C",
       "D"
     ],
-    "timestampUtc": "2026-08-06T15:54:44Z",
+    "notes": [
+      "Identifier-led G5 business E2E passed through gym-infra/kong/run-g5.sh on 2026-08-07.",
+      "Member has no external Kong route by design until a real Member HTTP gateway/transcoder exists.",
+      "Owner approval remains pending; controlled adoption stays one service at a time."
+    ],
+    "timestampUtc": "2026-08-07T14:46:00Z",
+    "currentValidation": {
+      "status": "passed",
+      "kongFixture": "revalidated",
+      "identifierUnitRace": "revalidated",
+      "memberCheck": "revalidated",
+      "protoHttpRoutes": "revalidated",
+      "infrastructureConfig": "revalidated",
+      "liveTopology": "business-e2e-passed",
+      "runner": "gym-infra/kong/run-g5.sh"
+    },
     "artifacts": {
       "commonGo": {
-        "version": "v0.3.1",
-        "module": "github.com/pploc/common-go@v0.3.1",
-        "sha": "8272ca9e5f84202eea15ffff4f7819c11e9e0033"
+        "version": "v0.3.2",
+        "module": "github.com/pploc/common-go@v0.3.2",
+        "releaseSourceSha": "0b0ff649ed06b6d1f638f74483b7b0daa6d26aaa",
+        "sum": "h1:KW1JJUMOiAZro8OVFmgplM+fHf3gs3ZOEewdpap37FM=",
+        "goModSum": "h1:qD/d70HE5wKKAXllnlXxdbF/+2fZ2K5kZIZi1CvttOw=",
+        "provenanceStatus": "revalidated"
       },
       "commonJava": {
         "version": "2.0.0",
         "package": "com.gym:common-java:2.0.0",
-        "sha": "cc86544e67be1fa7c02908612c8502071a1bb565"
+        "historicalSourceSha": "cc86544e67be1fa7c02908612c8502071a1bb565",
+        "releaseTag": "v2.0.0",
+        "releaseSourceSha": "unresolved",
+        "provenanceStatus": "blocked"
       },
       "gymProto": {
-        "tagDescribe": "v2.0.0-1-gd7a8867",
-        "sha": "d7a88677c2a0154a49feead646732341887d247f"
+        "historicalTagDescribe": "v2.0.0-1-gd7a8867",
+        "historicalSourceSha": "d7a88677c2a0154a49feead646732341887d247f",
+        "releaseTag": "v2.0.0",
+        "releaseSourceSha": "unresolved",
+        "provenanceStatus": "blocked"
       },
       "protoGo": {
-        "version": "v1.2.0",
-        "module": "github.com/pploc/proto-go@v1.2.0"
+        "version": "v1.2.1",
+        "module": "github.com/pploc/proto-go@v1.2.1",
+        "sum": "h1:lyBnlw+SwnihjqNVr6+SlGKs7z10ySKiE9eF+Yymqhw=",
+        "goModSum": "h1:Ryjpx8KfCH67seJcDx16MIlKxpPxJNaahb6lOxUQtgg=",
+        "provenanceStatus": "revalidated"
       },
       "gymProtoJava": {
         "version": "2.0.0",
         "package": "com.gym.proto:gym-proto-java:2.0.0"
       },
       "gymInfra": {
-        "sha": "a6cf151f45515855384dd250ec020e2bcab96802",
+        "historicalSourceSha": "a6cf151f45515855384dd250ec020e2bcab96802",
+        "validationSourceSha": "1005a37036d5c24642affde5e65c6cb1af364a7c",
         "kongImage": "kong:3.8-ubuntu",
         "plugin": "gym-jwt-claims",
         "jwt": {
@@ -42,7 +71,8 @@
         }
       },
       "msGymIdentifier": {
-        "sha": "b58b0cca763a816c55e845d0d24a78ed49a144b5",
+        "historicalSourceSha": "b58b0cca763a816c55e845d0d24a78ed49a144b5",
+        "validationSourceSha": "5866c4d15cd4d181dc86a98ab014d7ff8eaa5a10",
         "go": "1.26.5",
         "replaceDirective": false,
         "directFranzImport": false,
@@ -52,7 +82,8 @@
         }
       },
       "msGymMember": {
-        "sha": "508748bb80656607832c6c39f418caebd2dd3876",
+        "historicalSourceSha": "508748bb80656607832c6c39f418caebd2dd3876",
+        "validationSourceSha": "3539369a9e7515923d50ae5a25abf79b74b0ab8e",
         "mavenLocal": false,
         "pins": {
           "common-java": "2.0.0",

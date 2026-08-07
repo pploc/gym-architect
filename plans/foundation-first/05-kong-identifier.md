@@ -58,14 +58,13 @@ Do not use documentation snippets as evidence.
 
 ### A2. Route model
 
-External routes target service-local HTTP gateway listeners:
+External routes target implemented service-local HTTP gateway listeners. Identifier targets:
 
 ```text
 http://ms-gym-identifier:8080
-http://ms-gym-member:8080
 ```
 
-Keep any native `grpc://`/`grpcs://` routes separate and explicit. The internal `GetMembershipStatusByUserId` RPC has no Kong route.
+Member exposes no external Kong route until it has a real service-local HTTP gateway/transcoder. Keep any native `grpc://`/`grpcs://` routes separate and explicit. The internal `GetMembershipStatusByUserId` RPC has no Kong route.
 
 Freeze an exact public/protected method/path matrix. Public routes still strip spoofed trusted headers and inject no user identity.
 
@@ -73,19 +72,21 @@ Freeze an exact public/protected method/path matrix. Public routes still strip s
 
 For protected requests:
 
-1. Validate `RS256`, signature, issuer, audience, expiry, and known `kid`.
-2. Reject algorithm confusion/downgrade.
+1. Validate `RS256`, signature, issuer, audience, numeric `iat`, expiry, nonblank `jti`, and known `kid`.
+2. Reject algorithm confusion/downgrade. The contract has no clock-skew or future-`iat` policy.
 3. Strip incoming:
    - `x-user-id`;
    - `x-user-role`;
    - `x-gym-id`;
    - `x-membership-status`;
+   - `x-trace-id`;
    - any compatibility workload header.
 4. Normalize and inject validated claims.
 5. Reject unknown role/status.
 6. Allow `NONE` on ordinary authenticated routes.
 7. Reject `NONE`, missing, or malformed status for membership-gated routes.
-8. Preserve valid `traceparent`/`tracestate`; use `x-trace-id` only as fallback.
+8. Preserve `traceparent`/`tracestate`. Never derive a trace context from public `x-trace-id`.
+9. The mock fixture aliases service-local names only. Do not claim Member external HTTP routes work until Member has a real HTTP gateway/transcoder.
 
 ### A4. Gateway-local tests
 
@@ -175,8 +176,8 @@ Core can be tested with fakes before live Kong/Kafka, but production completion 
 - Detect reused revoked tokens and revoke the token family.
 - Issue only the frozen JWT claims/profile.
 - Never log passwords, Google tokens, JWTs, refresh tokens, or hashes.
-- Store `gym_id` as an opaque external identifier, not an FK.
-- Define how registration validates an allowed gym through a service API/reference policy; do not join Member’s database.
+- Public registration is chain-wide: `RegisterRequest` has no `gym_id`, creates only `CUSTOMER`, and does not call Member.
+- `gym_id` is an opaque external identifier, never an FK; authenticated `SelectGym` validates the active gym and resolves membership for `(user_id, gym_id)` through Member.
 
 ### B4. Database and outbox
 
@@ -213,14 +214,17 @@ Relay through stable `common-go`:
 
 ### B5. Membership-aware token issuance
 
-For `CUSTOMER` login/refresh:
+Login, Google Login, email verification, and Refresh issue gym-neutral tokens: no `gym_id` and `membership_status=NONE`. They do not call Member because the frozen membership lookup is scoped by `(user_id, gym_id)`.
 
-1. Call `GetMembershipStatusByUserId` over the verified workload channel.
-2. Authorize as Identifier workload, not a user role.
-3. Embed `NONE`, `ACTIVE`, `PAUSED`, or `EXPIRED`.
-4. Fail availability rather than guess when Member is unavailable.
+`SelectGym` is the membership-aware issuance path:
 
-For non-customer roles, use `membership_status=NONE` unless the frozen contract says otherwise.
+1. Require an authenticated user and explicit `gym_id`.
+2. Verify the gym is active through Member.
+3. Call `GetMembershipStatusByUserId(user_id, gym_id)` over verified mTLS workload identity.
+4. Embed only the returned `NONE`, `ACTIVE`, `PAUSED`, or `EXPIRED` status in the selected-gym token.
+5. Fail availability rather than guess when Member is unavailable.
+
+For non-customer roles, use `membership_status=NONE` unless the frozen contract says otherwise. Membership changes take effect in a selected-gym token after another `SelectGym` call.
 
 ### B6. Servers and policies
 
@@ -248,9 +252,9 @@ Run through real Kong, Identifier, Member, PostgreSQL, Redis, Kafka, and Schema 
 4. Verify Member creates one shell and handles duplicate delivery.
 5. Login through Kong and inspect sanitized upstream headers.
 6. Send spoofed role/gym/status headers and verify replacement.
-7. Refresh and verify internal membership lookup by user ID.
+7. Refresh and verify it remains gym-neutral with `membership_status=NONE`.
 8. Activate membership through controlled fixture flow.
-9. Refresh again and verify JWT/Kong status changes from `NONE` to `ACTIVE`.
+9. Call `SelectGym` and verify protected `(user_id, gym_id)` lookup changes selected-gym JWT/Kong status from `NONE` to `ACTIVE`.
 10. Rotate signing key and verify overlap/retirement timing.
 11. Logout/revoke and prove expected Kong/Identifier rejection behavior.
 12. Suspend user, revoke refresh access, and publish/consume `identity.user.suspended.v1`.
@@ -304,7 +308,7 @@ Also run migrations on disposable PostgreSQL and live outbox/Kong integration.
 - Identifier unit/race/static/vulnerability report.
 - migration and repository integration report.
 - outbox/Kafka/Registry report.
-- membership refresh/workload-auth report.
+- selected-gym issuance/workload-auth report.
 - signing-key rotation report.
 - full `identifier-e2e-report` with exact artifact versions/SHAs.
 
