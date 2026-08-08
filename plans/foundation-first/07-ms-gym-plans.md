@@ -103,7 +103,9 @@ Cover:
 
 ```bash
 cd /home/phucl/Workplace/gapi/ms-gym-plans
-./gradlew clean check
+./gradlew startEnv
+./gradlew clean build
+./gradlew stopEnv
 ```
 
 Also:
