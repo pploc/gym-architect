@@ -1,5 +1,7 @@
 # Phase 5 — Kong and `ms-gym-identifier`
 
+> **Completed historical scope:** G5 passed against the pre-split Member boundary. Phase 8 changes selected-gym location validation from Member to Plans and must produce new three-service evidence. Existing G5 evidence remains unchanged.
+
 ## Objective
 
 Reach G5 by implementing an executable Kong trust boundary, building Identifier on stable foundations, and proving register/login/refresh/membership/event behavior end to end.

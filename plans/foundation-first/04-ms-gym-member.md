@@ -1,5 +1,7 @@
 # Phase 4 — Refactor `ms-gym-member`
 
+> **Historical scope:** This phase records Member's G4 foundation validation before the Plans split. Phase 8 replaces Member's location/catalog boundary and must produce new evidence; do not reuse this phase as proof for the revised boundary.
+
 ## Objective
 
 Fix independent correctness defects immediately, then use `ms-gym-member` as the controlled validator for the tagged `gym-proto` release and `common-java` RC. Reach the Member portion of G4 without introducing undeployed legacy Kafka migration complexity.

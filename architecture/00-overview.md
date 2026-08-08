@@ -1,184 +1,125 @@
 # Gym Chain Management System — Architecture Overview
 
+> **Roadmap status:** This document describes the pending G6–G8 target. G0–G5 remain historical evidence of the pre-split Member boundary. See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md), [Phase 7 Plans](../plans/foundation-first/07-ms-gym-plans.md), and [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
+
 ## System Context
 
-A microservices-based backend for a **multi-location gym chain** operating in Vietnam.  
-Supports 4 frontend clients (out of scope for this doc):
+The platform is a microservices backend for a multi-location gym chain operating in Vietnam. Four frontend clients are anticipated but remain outside this repository scope:
 
 | Client | Users | Purpose |
-|--------|-------|---------|
-| **Web Admin Dashboard** | Gym admins | Manage members, trainers, invoices, promotions, analytics |
-| **Customer Mobile App** | Gym members | Register, buy membership, log workouts, book trainers |
-| **Trainer Mobile App** | Trainers | Manage availability, accept/reject bookings, view coaching history |
-| **Admin Ops Dashboard** | Chain owners | Cross-location analytics, revenue, trends |
+|---|---|---|
+| Web Admin Dashboard | Gym admins | Manage locations, plans, members, trainers, promotions, and reports |
+| Customer Mobile App | Gym members | Register, select a gym, purchase membership, log workouts, and book trainers |
+| Trainer Mobile App | Trainers | Manage availability, bookings, and coaching history |
+| Admin Ops Dashboard | Chain owners | Cross-location administration and analytics |
 
----
+## Active Roadmap Scope and Service Catalog
 
-## Tech Stack
+The catalog contains ten services. G6–G8 actively cover Identifier, Member, and the planned Plans service. The other seven entries describe future service boundaries and must not be read as deployed components.
 
-| Layer | Technology | Role |
-|-------|-----------|------|
-| **Backend (logic-heavy)** | Java 26 + Spring Boot 4 | Complex business domains (membership, payment, trainer, analytics, promotion) |
-| **Backend (latency-critical)** | Go 1.22 + Gin | High-throughput / low-latency services (auth, workout logging, check-in, notifications) |
-| **Relational DB** | PostgreSQL 16 | ACID transactions, relational queries |
-| **Wide-column DB** | Apache Cassandra 4 | Write-heavy, time-series, append-only workloads |
-| **Distributed SQL DB** | YugabyteDB | Strong consistency + horizontal scale, heavy aggregation |
-| **Event Streaming** | Apache Kafka | Async inter-service communication, event sourcing |
-| **API Protocol** | gRPC + Protobuf | Internal service-to-service communication |
-| **API Gateway** | Kong Gateway | L7 routing, JWT validation, rate limiting |
-| **Load Balancer** | HAProxy | L4 TCP load balancing, TLS termination |
-| **Containerization** | Kubernetes | Orchestration, scaling, service discovery |
-| **CI/CD** | GitHub Actions | Build, test, deploy pipelines |
-| **Cache** | Redis | JWT blacklist, short-lived derived QR payload cache, session data |
-| **API-First** | Protobuf (gRPC) + gRPC-Gateway (REST) | Contract-first API spec, Buf-based OpenAPI/Swagger generation |
+| # | Service | Technology | Database | Ownership | Status through G8 |
+|---|---|---|---|---|---|
+| 1 | Identifier | Go + PostgreSQL | `identity_db` | Users, credentials, refresh tokens, JWTs, selected-gym token issuance | Active |
+| 2 | Member | Java 26 + Spring Boot 4 | `member_db` | Profiles, subscriptions, purchase orchestration, pending purchases, lifecycle, validation, membership events | Active |
+| 3 | Plans | Java 26 + Spring Boot 4 | `plans_db` | Gym locations, gym-specific membership plans, availability, duration, VND list price | Planned G7 |
+| 4 | Payment | Java + PostgreSQL | `payment_db` | Payments, provider webhooks, refunds | Deferred; G8 uses a fake fixture only |
+| 5 | Workout | Go + Cassandra | `workout_ks` | Workout logs, templates, personal records | Deferred |
+| 6 | Trainer | Java + PostgreSQL | `trainer_db` | Trainer profiles, availability, bookings | Deferred |
+| 7 | Check-in | Go + YugabyteDB | `checkin_db` | Kiosks, QR keys, scan validation, check-in records | Deferred |
+| 8 | Notification | Go + Cassandra | `notification_ks` | Notification fan-out and history | Deferred |
+| 9 | Analytics | Java + YugabyteDB | `analytics_db` | Attendance, revenue, and trend projections | Deferred |
+| 10 | Promotion | Java + PostgreSQL | `promotion_db` | Promotion codes and reservations | Deferred |
 
----
-
-## Service Map (9 Services)
+## Pending G8 Topology
 
 ```mermaid
-graph TB
-    subgraph "External Clients"
-        WEB[Web Admin Dashboard]
-        MOB[Customer Mobile App]
-        TRAINER_APP[Trainer Mobile App]
-        ADMIN[Admin Ops Dashboard]
-    end
+flowchart LR
+    Client[Clients] --> Kong[Kong]
+    Kong -->|public HTTP| ID[Identifier]
+    Kong -->|public Plans HTTP| PL[Plans]
 
-    subgraph "Ingress Layer"
-        HA[HAProxy<br/>L4 Load Balancer<br/>TLS Termination]
-        KONG[Kong Gateway<br/>L7 Routing / JWT / Rate Limit]
-    end
+    ID -->|mTLS: GetActiveGym| PL
+    ID -->|mTLS: GetMembershipStatusByUserId| MB[Member]
+    MB -->|mTLS: ResolvePurchasablePlan| PL
+    MB -->|G8 fixture only| FP[Fake Payment]
 
-    subgraph "Go Services — Latency-Critical"
-        IS[Identity Service<br/>Go + PostgreSQL]
-        WS[Workout Service<br/>Go + Cassandra]
-        CS[Check-in Service<br/>Go + YugabyteDB]
-        NS[Notification Service<br/>Go + Cassandra]
-    end
-
-    subgraph "Spring Boot Services — Business-Logic-Heavy"
-        MS[Member Service<br/>Spring Boot + PostgreSQL]
-        PS[Payment Service<br/>Spring Boot + PostgreSQL]
-        TS[Trainer Service<br/>Spring Boot + PostgreSQL]
-        AS[Analytics Service<br/>Spring Boot + YugabyteDB]
-        PRS[Promotion Service<br/>Spring Boot + PostgreSQL]
-    end
-
-    subgraph "Data Layer"
-        PG[(PostgreSQL)]
-        CASS[(Cassandra)]
-        YB[(YugabyteDB)]
-        KAFKA[[Apache Kafka]]
-        REDIS[(Redis)]
-    end
-
-    WEB & MOB & TRAINER_APP & ADMIN --> HA
-    HA --> KONG
-    KONG --> IS & MS & PS & WS & TS & CS & NS & AS & PRS
-
-    IS & MS & PS & TS & PRS --> PG
-    WS & NS --> CASS
-    CS & AS --> YB
-
-    IS & MS & PS & WS & TS & CS & NS & AS & PRS --> KAFKA
-    IS & CS --> REDIS
+    ID --> IDDB[(identity_db)]
+    MB --> MBDB[(member_db)]
+    PL --> PLDB[(plans_db)]
+    ID --> Redis[(Redis)]
+    ID --> Kafka[[Kafka]]
+    MB --> Kafka
 ```
 
----
+Plans V1 has no Kafka producer, consumer, topic, outbox, cache, scheduler, Schema Registry dependency, or Payment integration. The Phase-8 fake Payment component exists only to prove purchase correlation and event replay; it is not the production Payment service.
 
-## Service Assignment Rationale
+## Ownership and Database Isolation
 
-| # | Service | Tech | DB | Why This Stack |
-|---|---------|------|----|----------------|
-| 1 | **Identity** | Go Gin | PostgreSQL | Auth = latency-critical path. Go = fast cold start, low memory. Simple user CRUD + JWT. |
-| 2 | **Member** | Spring Boot | PostgreSQL | Rich domain: membership state machine (ACTIVE/PAUSED/EXPIRED), multi-tenant plan management. Spring excels at complex domain models. |
-| 3 | **Payment** | Spring Boot | PostgreSQL | Momo/ZaloPay integration needs robust `@Transactional`, retry, idempotency. Spring's ecosystem is mature for payment flows. |
-| 4 | **Workout** | Go Gin | Cassandra | Highest write throughput: every set/rep logged. Cassandra partitioned by `(user_id, date)` handles write volume. Go handles concurrent writes efficiently. |
-| 5 | **Trainer** | Spring Boot | PostgreSQL | Calendar scheduling, booking state machine, complex relational queries with joins across availability + bookings. |
-| 6 | **Check-in** | Go Gin | YugabyteDB | QR validation must be <100ms. YugabyteDB provides strong consistency (can't let expired members in) + distributed for multi-gym. |
-| 7 | **Notification** | Go Gin | Cassandra | High fan-out (SMS/email to thousands). Go handles concurrent I/O to external APIs. Cassandra stores append-only notification history. |
-| 8 | **Analytics** | Spring Boot | YugabyteDB | Heavy aggregation (SUM, COUNT, GROUP BY, window functions). YugabyteDB handles distributed SQL. Spring Batch for scheduled ETL jobs. |
-| 9 | **Promotion** | Spring Boot | PostgreSQL | Discount code CRUD, coupon validation, campaign management. Relational model fits rule-based logic. |
+Each service owns its database exclusively. Cross-service identifiers are opaque strings. They are never cross-service database foreign keys.
 
----
+```text
+identity_db
+  users
+  refresh_tokens
+  email_verification_tokens
 
-## Database Assignment
+member_db
+  members
+  subscriptions
+  pending_purchases
+  outbox_events
+  processed_events
 
-```
-PostgreSQL (OLTP, strong ACID, relational joins):
-  ├── identity_db      — users, refresh_tokens, roles
-  ├── member_db        — members, plans, subscriptions, gym_locations
-  ├── payment_db       — payments, refunds, payment_methods, dead_letter_webhooks
-  ├── trainer_db       — trainers, availability, bookings
-  └── promotion_db     — promotions, coupon_reservations, coupon_redemptions
-
-Cassandra (write-heavy, time-series, append-only):
-  ├── workout_ks       — workout_logs, templates, personal_records
-  └── notification_ks  — notification history by user
-
-YugabyteDB (distributed SQL, strong consistency + aggregation):
-  ├── checkin_db       — check-ins, kiosk devices, encrypted versioned QR root keys
-  └── analytics_db     — materialized attendance, revenue, trends
+plans_db
+  gym_locations
+  membership_plans
 ```
 
-Each service owns its database exclusively — **no shared databases**.
+Only Plans may enforce a local foreign key from `membership_plans.gym_id` to `gym_locations.id`. Member stores opaque `user_id`, `gym_id`, and `plan_id` values. A subscription also stores `plan_type_snapshot`, `duration_days_snapshot`, and `price_vnd_snapshot`; later catalog changes do not alter purchased terms.
 
----
+Identifier owns no Member or Plans table and stores no cross-service gym foreign key. Normal login and refresh tokens are gym-neutral. A selected-gym token carries an explicitly selected `gym_id` and the membership status returned by Member.
 
-## Multi-Tenancy Model
+## Plans Domain Rules
 
-Every entity includes `gym_id` (location identifier).  
-Chain-level operations aggregate across `gym_id` values. The **Member Service** acts as the owner of the `gym_locations` dataset. All other services fetch gym details via gRPC or cache location meta.
-
-```
-gym_locations(
-  id UUID PRIMARY KEY,
-  chain_id UUID,        -- parent chain/brand
-  name VARCHAR,         -- "FitZone Quan 1", "FitZone Thu Duc"
-  address TEXT,
-  city VARCHAR,
-  status VARCHAR,       -- ACTIVE, CLOSED
-  created_at TIMESTAMP
-)
-```
-
-Members belong to a specific `gym_id`. Cross-gym access is a future feature flag.
-
----
+- Gym status is `ACTIVE` or `CLOSED`.
+- Plan type is `MONTHLY`, `YEARLY`, or `LIFETIME`.
+- `price_vnd` is a non-negative `int64`; V1 supports VND only.
+- Monthly and yearly plans require a positive duration.
+- Lifetime plans have no duration.
+- A plan is purchasable only when it is active, belongs to the requested gym, and that gym is active.
 
 ## Communication Patterns
 
-| Pattern | When | Example |
-|---------|------|---------|
-| **gRPC (sync)** | Request-response, needs immediate answer | Check-in Service → Member Service: "Is member X active?" |
-| **Kafka (async)** | At-least-once domain events, idempotent handling required | Payment Service → `payment.completed.v1` → Member Service activates membership |
-| **gRPC-Gateway** | External clients need REST/JSON | Mobile app → Kong → gRPC-Gateway → gRPC service |
+| Pattern | Pending G6–G8 use |
+|---|---|
+| Public HTTP/JSON | Client to Kong to a service-local HTTP listener on `8080` |
+| Native gRPC with mTLS | Identifier to Plans, Identifier to Member, and Member to Plans on `50051` |
+| Kafka | Identifier identity events and Member membership/payment handling only |
 
----
+The active workload allowlist is exact:
 
-## API-First and OpenAPI Generation
+- Identifier may call Plans `GetActiveGym`.
+- Identifier may call Member `GetMembershipStatusByUserId`.
+- Member may call Plans `ResolvePurchasablePlan`.
 
-We use **Buf (buf.build)** for our API-first proto workflow.
+A workload certificate establishes service identity, not an end-user role. Internal callers never forge or forward `x-user-id`, `x-user-role`, `x-gym-id`, or `x-membership-status` as workload credentials.
 
-1. **Specs to Code:** Protobuf definitions (`.proto`) are compiled into versioned Java and Go artifacts; generated stubs are not copied into service repositories.
-2. **HTTP mapping source of truth:** Existing `proto/*/v1/*_http.yaml` Google API service configurations are wired into `buf.gen.yaml` through `grpc_api_configuration`. Only intentionally external RPCs are mapped; unbound methods are not generated.
-3. **Listeners:** Each externally exposed service runs native internal gRPC on `50051` and a service-local gRPC-Gateway HTTP/JSON listener on `8080`.
-4. **Kong:** External path routes target HTTP `8080`. Routing an HTTP path to raw `grpc://...:50051` does not perform REST transcoding. Any future native gRPC exposure uses a separate explicit route.
-5. **OpenAPI Docs:** OpenAPI is generated from the same Protobuf and external HTTP mapping source, then aggregated by Swagger UI.
+Check-in remains deferred. Plans is the canonical location owner and Member is the membership-decision owner, but Plans V1 does not authorize a Check-in method. Kiosk provisioning requires a separately frozen Check-in-to-Plans contract before implementation.
 
----
+## API-First Boundary
 
-## Key Architecture Decisions
+Protobuf definitions and per-service HTTP configuration are the contract source of truth. Public methods receive HTTP mappings and route through Kong to service-local HTTP listeners. Workload-only methods have no HTTP mapping and are reachable only through authorized mTLS gRPC channels.
 
-| Decision | Choice | Alternative Considered | Reason |
-|----------|--------|----------------------|--------|
-| Auth validation | Kong validates JWT signature; services read claims | Each service validates JWT | Centralized = no duplicated logic, faster |
-| QR mechanism | 60-second signed gym-display QR scanned by phone | Phone QR scanned by wall device | A display kiosk is cheaper and more reliable than a camera scanner; short-lived HMAC payloads limit screenshot replay. |
-| Trainer payment | Gym pays trainer (salary) | Customer pays trainer directly | Simplifies payment flow; no split/escrow needed |
-| Event schema | Protobuf (reuse gRPC protos) | Avro + Schema Registry | One schema language for everything; less tooling overhead |
-| DB-per-service | Yes, strict isolation | Shared DB with schema separation | True microservice boundary; independent scaling and migration |
-| Multi-tenant | `gym_id` column per entity | Schema-per-tenant | Column-based = simpler ops, sufficient for gym chain scale |
-| Webhook Handling | Native REST controllers | gRPC-Gateway | Providers send proprietary form-data or JSON. Gateway is too strict. |
-| DLQ Recovery | Manual replay from DB logs | Auto-retry infinitely | Auto-retry can block consumer partitions. DLQ preserves ordering while isolating errors. |
+The Member-to-Plans relocation is a source-breaking contract change planned for the G6 release. Until that release and G7–G8 implementation are complete, current repositories may still contain pre-split Member RPCs and persistence. Current-facing documentation describes the target; historical G0–G5 handoffs record the implementation that was previously proved.
 
+## Key Decisions
+
+| Decision | Target choice | Reason |
+|---|---|---|
+| Catalog owner | Plans | One canonical source for locations and purchasable terms |
+| Membership owner | Member | Keeps lifecycle, validation, and events with subscription state |
+| Purchase terms | Frozen in Member before Payment initiation | Completion remains deterministic if Plans later changes or is unavailable |
+| Payment correlation | Member-owned `purchase_id` | Avoids treating a reusable plan ID as a purchase instance |
+| Database isolation | DB per service, opaque cross-service IDs | Prevents schema coupling and cross-service joins |
+| Internal trust | Caller-specific mTLS and method allowlists | Prevents user-header spoofing and workload privilege confusion |
+| Plans messaging | None in V1 | No current workflow requires it |

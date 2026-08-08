@@ -1,30 +1,30 @@
 # Identity Service
 
-> **Tech:** Go Gin | **DB:** PostgreSQL | **Port:** 50051 (gRPC) / 8080 (REST)
+> **Tech:** Go | **DB:** PostgreSQL `identity_db` | **Ports:** 50051 native gRPC / 8080 HTTP
+>
+> **Roadmap status:** Core identity behavior exists. Separate Plans and Member workload clients are the pending G8 target. Historical G5 evidence records the earlier Member-only gym-validation path. See [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
 
 ## Responsibilities
 
-- User registration (email/password + Google OAuth2)
-- JWT access token (15 min) + refresh token (7 days)
-- Role management: `CUSTOMER`, `TRAINER`, `ADMIN`, `SUPER_ADMIN`
-- Public registration creates `CUSTOMER` only; elevated roles require protected administration or controlled out-of-band provisioning
-- Password reset, email verification
-- Token refresh, revocation, and Redis-backed logout blacklisting
-- User suspension & cascade dispatching
+- User registration with email/password or Google OAuth2
+- Email verification; password reset remains deferred until its API contract is frozen
+- JWT access tokens, refresh-token rotation, logout, and Redis-backed revocation
+- Roles: `CUSTOMER`, `TRAINER`, `ADMIN`, `SUPER_ADMIN`
+- User suspension and identity events
+- Selected-gym token issuance after authoritative downstream checks
 
----
+Identifier owns identity and credentials. It does not own gym locations, membership plans, member profiles, or subscriptions.
 
 ## Data Model
 
 ```mermaid
 erDiagram
     USERS {
-        uuid id PK
-        uuid gym_id FK
+        string id PK
         varchar email UK
         varchar password_hash
         varchar auth_provider "LOCAL | GOOGLE"
-        varchar provider_id "Google sub ID"
+        varchar provider_id "Google subject"
         varchar role "CUSTOMER | TRAINER | ADMIN | SUPER_ADMIN"
         varchar status "ACTIVE | SUSPENDED | PENDING_VERIFICATION"
         varchar full_name
@@ -34,8 +34,8 @@ erDiagram
     }
 
     REFRESH_TOKENS {
-        uuid id PK
-        uuid user_id FK
+        string id PK
+        string user_id FK
         varchar token_hash
         timestamp expires_at
         boolean revoked
@@ -44,202 +44,115 @@ erDiagram
         timestamp created_at
     }
 
-    USERS ||--o{ REFRESH_TOKENS : "has"
+    USERS ||--o{ REFRESH_TOKENS : has
 ```
 
----
+There is no `users.gym_id` foreign key. Gym selection is request/token context. Any `gym_id`, `member_id`, or `plan_id` crossing a service boundary is an opaque string, never a cross-service database FK.
 
-## Authentication and Registration Flows
+## Registration and Gym-Neutral Tokens
 
-### 1. User Registration Flow
+Public registration always creates a `CUSTOMER` in `PENDING_VERIFICATION`. Elevated roles require protected administration or controlled out-of-band provisioning.
 
 ```mermaid
 sequenceDiagram
-    participant C as Mobile App / Web Client
-    participant K as Kong Gateway
-    participant IS as Identity Service
-    participant DB as PostgreSQL (identity_db)
+    participant C as Client
+    participant K as Kong
+    participant ID as Identifier
+    participant DB as identity_db
     participant KF as Kafka
-    participant MS as Member Service
+    participant MB as Member
 
-    C->>K: POST /api/v1/auth/register {email, password, full_name}
-    K->>IS: gRPC Register(RegisterRequest)
-    IS->>IS: Validate inputs and force role=CUSTOMER
-    Note over IS: Reject attempts to register TRAINER, ADMIN, or SUPER_ADMIN
-    IS->>IS: Generate Bcrypt Hash of password (cost factor = 12)
-    IS->>DB: INSERT INTO users (email, password_hash, role, status='PENDING_VERIFICATION', ...)
-    IS->>DB: INSERT email_verification_tokens (token_hash only)
-    IS->>KF: Publish 'identity.user.registered.v1' (Member shell)
-    IS->>KF: Publish 'identity.email.verification-requested.v1' (deep link for Notification)
-    IS-->>C: AuthResponse (PENDING_VERIFICATION, no tokens)
-
-    Note over KF,MS: Async Member Shell Creation
-    KF-->>MS: Consume 'identity.user.registered.v1'
-    MS->>MS: Create Member Profile shell (status = NONE)
+    C->>K: POST /api/v1/auth/register
+    K->>ID: Register
+    ID->>DB: Create pending customer and hashed verification token
+    ID->>KF: identity.user.registered.v1
+    ID->>KF: identity.email.verification-requested.v1
+    ID-->>C: PENDING_VERIFICATION, no token
+    KF-->>MB: Create gym-neutral member shell
 ```
 
-Email verification (local accounts only):
+Local verification tokens are generated with cryptographically secure randomness, stored only as SHA-256 hashes, expire after the configured TTL, and are single use. Google accounts begin active after Google token verification.
 
-1. Identifier mints one-time opaque token (`crypto/rand` 32B → base64.RawURLEncoding raw; SHA-256 hex stored).
-2. Frontend deep link: `{PUBLIC_APP_URL}/verify-email?token={raw}` (env `PUBLIC_APP_URL`, default `http://localhost:3000`).
-3. Kafka event `identity.email.verification-requested.v1` carries `verification_url` (secret — ACL + no logs).
-4. SPA posts raw token to `POST /api/v1/auth/email/verify` → ACTIVE + gym-neutral JWT; token single-use, TTL `EMAIL_VERIFICATION_TTL` (24h), resend cooldown `EMAIL_VERIFICATION_RESEND_COOLDOWN` (60s).
-5. Google register stays ACTIVE with no verification token.
+Login, Google login, email verification, and refresh issue gym-neutral access tokens:
 
-### 2. Normal Login Flow (Email/Password)
+- no `gym_id` claim;
+- `membership_status=NONE`;
+- 15-minute access-token TTL;
+- rotating opaque refresh token stored as a hash.
+
+## Pending Selected-Gym Flow
+
+`POST /api/v1/auth/gym` is the only membership-aware issuance path.
 
 ```mermaid
 sequenceDiagram
-    participant C as Mobile App / Web Client
-    participant K as Kong Gateway
-    participant IS as Identity Service
-    participant DB as PostgreSQL (identity_db)
+    participant C as Authenticated customer
+    participant K as Kong
+    participant ID as Identifier
+    participant PL as Plans
+    participant MB as Member
 
-    C->>K: POST /api/v1/auth/login {email, password}
-    K->>IS: gRPC Login(LoginRequest)
-    IS->>DB: SELECT * FROM users WHERE email = ?
-    DB-->>IS: User details & password_hash
-    IS->>IS: Verify password via Bcrypt comparison
-    alt Password Matches & status != SUSPENDED
-        IS->>IS: Generate JWT Access Token (15-min TTL)
-        IS->>IS: Generate cryptographically secure random Refresh Token (7-day TTL)
-        IS->>IS: Hash Refresh Token using SHA256
-        IS->>DB: INSERT INTO refresh_tokens (user_id, token_hash, expires_at, revoked=false, ...)
-        IS-->>C: AuthResponse {access_token, refresh_token}
-    else Password Mismatch or User Suspended
-        IS-->>C: Error (401 Unauthorized / INVALID_ARGUMENT)
-    end
+    C->>K: POST /api/v1/auth/gym {gym_id}
+    K->>ID: SelectGym with verified user claims
+    ID->>PL: GetActiveGym(gym_id) over mTLS
+    PL-->>ID: Canonical active gym
+    ID->>MB: GetMembershipStatusByUserId(user_id, gym_id) over mTLS
+    MB-->>ID: NONE | ACTIVE | PAUSED | EXPIRED
+    ID-->>C: Selected-gym JWT
 ```
 
-### 3. Token Refresh Flow (Gym-Neutral)
+Identifier calls Plans first, then Member. A missing or closed gym, membership lookup failure, authorization failure, timeout, or TLS failure prevents token issuance. Identifier never guesses a membership state.
 
-```mermaid
-sequenceDiagram
-    participant C as Mobile App / Web Client
-    participant K as Kong Gateway
-    participant IS as Identity Service
-    participant DB as PostgreSQL (identity_db)
+Plans and Member use independent targets, deadlines, CA bundles, client certificates, clients, and close lifecycles. Workload identity comes from verified mTLS. Identifier never forwards or forges `x-user-id`, `x-user-role`, `x-gym-id`, or `x-membership-status` as service credentials.
 
-    C->>K: POST /api/v1/auth/refresh {refresh_token}
-    K->>IS: gRPC RefreshToken(RefreshTokenRequest)
-    IS->>IS: Compute SHA256(refresh_token)
-    IS->>DB: SELECT * FROM refresh_tokens WHERE token_hash = ?
-    DB-->>IS: RefreshToken record
-    IS->>IS: Validate: expires_at > now AND revoked == false
-    alt Token Valid
-        IS->>IS: Generate gym-neutral JWT (membership_status=NONE, no gym_id)
-        IS->>IS: Generate new Refresh Token (Refresh Token Rotation)
-        IS->>DB: Mark old refresh token as revoked = true
-        IS->>DB: INSERT new refresh token
-        IS-->>C: AuthResponse {access_token, refresh_token}
-    else Token Invalid / Revoked
-        IS-->>C: Error (401 Unauthorized / Unauthenticated)
-    end
-```
-
-`SelectGym` is the membership-aware endpoint. It requires `gym_id`, verifies the active gym, then calls `GetMembershipStatusByUserId(user_id, gym_id)` through Identifier-to-Member mTLS before issuing a selected-gym JWT.
-
----
-
-## JWT Structure
+The selected-gym token includes the selected gym and Member's returned status. Clients call `SelectGym` again after a membership change.
 
 ```json
 {
-  "sub": "550e8400-e29b-41d4-a716-446655440000",
+  "sub": "user-id",
   "iss": "gym-identifier",
   "aud": "gym-api",
   "iat": 1699999100,
   "exp": 1700000000,
-  "jti": "access-token-uuid",
+  "jti": "access-token-id",
   "kid": "key-id-2026-08",
   "role": "CUSTOMER",
-  "gym_id": "gym-uuid-here",
+  "gym_id": "opaque-gym-id",
   "membership_status": "ACTIVE"
 }
 ```
 
-JWT profile: `RS256`; issuer `gym-identifier`; audience `gym-api`; required
-claims `sub`, `iss`, `aud`, `iat`, `exp`, `jti`, and `kid`. Kong validates the
-algorithm, signature, issuer, audience, numeric issued-at value, expiry, JWT ID, and key ID before injecting
-claims. Current and previous public keys overlap for at least the maximum access-token
-TTL. Tests use a committed fixture public key and test-only signer/private key;
-production keys come from a secret manager and are never committed.
+JWT uses RS256. Kong validates algorithm, signature, issuer, audience, `iat`, `exp`, `jti`, and `kid` before replacing trusted headers with validated claims. Current and previous public keys overlap for at least the maximum access-token TTL. Production private keys remain in a secret manager.
 
-Public methods are Register, Login, Google Login, Refresh, VerifyEmail, and
-ResendEmailVerification. Logout and all other methods are protected.
+## Trainer Administration Boundary
 
-- Login, Google Login, email verification, and Refresh issue gym-neutral tokens: `membership_status=NONE` and no `gym_id`.
-- `POST /api/v1/auth/gym` is the only membership-aware issuance path. After a membership change, a customer calls `SelectGym` again to obtain status for that selected gym.
+Identifier owns trainer credentials and the `TRAINER` role. In the pending split, `CreateTrainerAccount` validates the requested active gym through Plans `GetActiveGym`, not Member. Creating a trainer profile in the deferred Trainer service is separate work.
 
----
+## Logout and Suspension
 
-## Token Blacklisting (Logout)
+Logout hashes the access token and stores `blacklist:{token_hash}` in Redis until the token expires. Refresh tokens are revoked in PostgreSQL.
 
-When a user logs out:
-1. Access token is placed in Redis: `blacklist:{access_token_hash}` with TTL = remaining token lifetime.
-2. Kong Gateway's custom Redis-lookup plugin checks every incoming request's token hash. If found in Redis, Kong rejects immediately with 401 Unauthorized (stateless validation with stateful revocation fallback).
+Suspension:
 
----
+1. marks the user `SUSPENDED`;
+2. revokes active refresh tokens;
+3. publishes `identity.user.suspended.v1`;
+4. lets downstream owners apply their own state changes idempotently.
 
-## RBAC Matrix
+## Kafka Events
 
-| Route / RPC | Public | Customer | Trainer | Admin | Description |
-|-------------|:---:|:---:|:---:|:---:|-------------|
-| `Register` / `Login` / `LoginWithGoogle` / `RefreshToken` | ✓ | | | | Public auth endpoints |
-| `Logout` | | ✓ | ✓ | ✓ | Protected token revocation |
-| `GetCurrentUser` | | ✓ | ✓ | ✓ | Get logged in profile |
-| `LogWorkout` / `ProcessScan` | | ✓ | | | Customer features (active membership checked) |
-| `AcceptBooking` / `SetAvailability` | | | ✓ | | Trainer operations |
-| `CreateTrainerAccount` | | | | ✓ | Admin registers new staff |
-| `SuspendUser` | | | | ✓ | Suspend any account |
-| `CreatePromotion` | | | | ✓ | Admin management |
+Identity event contracts are gym-neutral. Their prior `gym_id` fields are reserved and must not appear in examples or payload construction.
 
----
+| Topic | Key | Payload |
+|---|---|---|
+| `identity.user.registered.v1` | `user_id` | `{user_id, email, full_name, role, auth_provider, timestamp}` |
+| `identity.user.role-changed.v1` | `user_id` | `{user_id, old_role, new_role, timestamp}` |
+| `identity.user.suspended.v1` | `user_id` | `{user_id, role, timestamp}` |
+| `identity.email.verification-requested.v1` | `user_id` | `{user_id, email, full_name, verification_url, expires_at, timestamp}` |
 
-## SuspendUser Cascade Flow
+`verification_url` contains secret token material. Topic ACLs must restrict it, and consumers must never log it.
 
-When an Admin suspends a user:
-1. Identity Service marks user status as `SUSPENDED` in PostgreSQL.
-2. Identity Service revokes all active `REFRESH_TOKENS` for that user.
-3. Identity Service publishes `identity.user.suspended.v1` event to Kafka.
-4. **Member Service** consumes event → Sets member status to `SUSPENDED`, cancels any active subscriptions.
-5. **Trainer Service** consumes event:
-   - If user was a Trainer → Sets trainer status to `SUSPENDED`, cancels all future bookings, publishes `booking.cancelled` (triggering full refunds via Payment Service).
-   - If user was a Customer → Cancels all future bookings for that customer, publishes `booking.cancelled` (refunds triggered).
-
----
-
-## Google OAuth2 Flow
-
-```mermaid
-sequenceDiagram
-    participant C as Mobile App
-    participant G as Google
-    participant IS as Identity Service
-
-    C->>G: Google Sign-In SDK → get ID Token
-    G-->>C: Google ID Token
-    C->>IS: POST /api/v1/auth/oauth/google {id_token}
-    IS->>G: Verify ID token (Google tokeninfo endpoint)
-    G-->>IS: {sub, email, name, picture}
-    IS->>IS: Find or create user (provider=GOOGLE, provider_id=sub)
-    IS->>IS: Generate JWT access + refresh tokens
-    IS-->>C: {access_token, refresh_token}
-```
-
----
-
-## Kafka Events Published
-
-| Topic | Key | Payload | Consumed By |
-|-------|-----|---------|-------------|
-| `identity.user.registered.v1` | `user_id` | `{user_id, email, full_name, role}` | Member Service (create member profile) |
-| `identity.user.role-changed.v1` | `user_id` | `{user_id, old_role, new_role, gym_id}` | — |
-| `identity.user.suspended.v1` | `user_id` | `{user_id, role, gym_id}` | Member Service, Trainer Service |
-
----
-
-## API (gRPC)
+## API
 
 ```protobuf
 service IdentityService {
@@ -248,54 +161,56 @@ service IdentityService {
   rpc Login(LoginRequest) returns (AuthResponse);
   rpc LoginWithGoogle(GoogleLoginRequest) returns (AuthResponse);
   rpc RefreshToken(RefreshTokenRequest) returns (AuthResponse);
-  rpc Logout(LogoutRequest) returns (google.protobuf.Empty);
+  rpc VerifyEmail(VerifyEmailRequest) returns (AuthResponse);
+  rpc ResendEmailVerification(ResendEmailVerificationRequest)
+      returns (google.protobuf.Empty);
 
   // Authenticated
+  rpc Logout(LogoutRequest) returns (google.protobuf.Empty);
   rpc GetCurrentUser(google.protobuf.Empty) returns (UserResponse);
   rpc ChangePassword(ChangePasswordRequest) returns (google.protobuf.Empty);
+  rpc SelectGym(SelectGymRequest) returns (SelectGymResponse);
 
-  // Admin only
+  // Admin
   rpc CreateTrainerAccount(CreateTrainerRequest) returns (UserResponse);
   rpc SuspendUser(SuspendUserRequest) returns (google.protobuf.Empty);
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
 }
 ```
 
----
+Public methods are Register, Login, Google Login, Refresh, VerifyEmail, and ResendEmailVerification. Logout, `SelectGym`, and all administration methods are protected.
 
-## Clean Architecture Layers
+## Authorization Summary
 
-```
-cmd/server/main.go                    ← bootstrap, wire dependencies
+| Operation | Customer | Trainer | Admin |
+|---|:---:|:---:|:---:|
+| Login, refresh, verification | Public | Public | Public |
+| Logout, current user, change password | Yes | Yes | Yes |
+| Select gym | Yes | No | No |
+| Create trainer account | No | No | Yes |
+| Suspend/list users | No | No | Yes |
+
+## Target Internal Structure
+
+```text
+cmd/server/main.go
 internal/
 ├── domain/
-│   ├── user.go                       ← User entity, Role enum
-│   ├── token.go                      ← RefreshToken entity
-│   └── errors.go                     ← ErrInvalidCredentials, ErrUserExists
 ├── usecase/
-│   ├── register.go                   ← RegisterUseCase
-│   ├── login.go                      ← LoginUseCase
-│   ├── refresh_token.go              ← RefreshTokenUseCase
 │   └── port/
-│       ├── user_repo.go              ← UserRepository interface
-│       ├── token_repo.go             ← TokenRepository interface
-│       ├── password_hasher.go        ← PasswordHasher interface
-│       ├── token_generator.go        ← JWTGenerator interface
-│       └── event_publisher.go        ← EventPublisher interface
+│       ├── user_repository.go
+│       ├── token_repository.go
+│       ├── member_client.go
+│       ├── plans_client.go
+│       └── event_publisher.go
 ├── adapter/
 │   ├── grpc/
-│   │   ├── handler.go                ← implements IdentityServiceServer
-│   │   └── mapper.go                 ← proto <-> domain mapping
 │   ├── repository/
-│   │   ├── postgres_user.go          ← implements UserRepository
-│   │   └── redis_token.go            ← implements TokenRepository
 │   ├── security/
-│   │   ├── bcrypt_hasher.go          ← implements PasswordHasher
-│   │   └── jwt_generator.go          ← implements JWTGenerator
 │   ├── kafka/
-│   │   └── event_publisher.go        ← implements EventPublisher
-│   └── oauth/
-│       └── google_verifier.go        ← Google ID token verification
+│   ├── member/       # GetMembershipStatusByUserId
+│   └── plans/        # GetActiveGym
 └── config/
-    └── config.go                     ← env-based config loading
 ```
+
+Only the split-client additions are pending G8. This document does not claim that current code or released contracts already contain them.

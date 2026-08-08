@@ -1,102 +1,77 @@
 # Check-in Service
 
-> **Tech:** Go Gin | **DB:** YugabyteDB | **Port:** 50051 (internal gRPC) / 8080 (gRPC-Gateway HTTP)
+> **Catalog design:** Go | YugabyteDB `checkin_db` | 50051 native gRPC / 8080 HTTP
+>
+> **Status:** Check-in remains deferred through G8. This file defines a future boundary, not active implementation. Plans owns canonical locations; Member owns membership decisions. Plans V1 does not authorize Check-in, so kiosk provisioning requires a separately frozen workload contract.
 
-## Responsibilities
+## Future Responsibilities
 
 - Register and revoke entrance display kiosks
 - Own encrypted, versioned per-gym QR root keys
 - Issue short-lived signed QR payloads to authenticated kiosks
-- Validate QR scans sent by members' Mobile Apps
-- Verify active membership and correct gym through Member Service
-- Record check-ins and publish `checkin.recorded.v1` events
-- Return scan responses within **<100ms**
+- Validate member scans locally
+- Ask Member for membership validity
+- Record check-ins and publish `checkin.recorded.v1`
+- Target scan response latency below 100 ms
 
-Member Service remains the source of truth for gym locations and memberships. Check-in owns all QR key material and never retrieves or exposes a raw QR secret through another service.
+Check-in owns kiosk credentials, QR root keys, signed payloads, and check-in records. It owns no location or membership data.
 
----
+## Boundary Freeze Required Before Implementation
 
-## Architecture of the Check-in System
+The G6 Plans contract authorizes only:
 
-The entrance uses a **reversed scanning approach**:
+- Identifier to Plans `GetActiveGym`;
+- Member to Plans `ResolvePurchasablePlan`.
 
-1. An admin registers a display kiosk for an active gym.
-2. The kiosk authenticates to Check-in and fetches the current and next signed QR payload.
-3. The kiosk switches QR codes every 60 seconds.
-4. A logged-in member scans the display with the Mobile App.
-5. Check-in validates the signed payload locally, calls Member Service to validate membership, and records the check-in.
+Check-in must not reuse either method or identity. Before kiosk provisioning is implemented, a later contract must define a Check-in-authorized Plans lookup, its exact semantics, and its mTLS allowlist. No current Plans V1 method is available to Check-in.
 
-The display is not a scanner. `device_id` identifies the authenticated display kiosk that issued the signed payload.
+Future scan processing may call Member `ValidateMembership(member_id, gym_id)` after Check-in's workload policy is implemented. Plans need not participate in each scan because the signed payload is bound to a previously provisioned gym.
 
----
+## Reversed QR Design
 
-## Kiosk Provisioning
+1. An admin provisions a display kiosk for a verified active gym after the future Plans boundary exists.
+2. The kiosk authenticates to Check-in and fetches current and next signed payloads.
+3. It switches payloads every 60 seconds.
+4. A logged-in member scans the display.
+5. Check-in validates the payload locally, calls Member for membership validity, and records the check-in.
+
+`device_id` identifies the authenticated display that issued the payload; the display is not a scanner.
+
+## Deferred Provisioning Flow
 
 ```mermaid
 sequenceDiagram
     actor A as Admin
     participant K as Kong
-    participant CS as Check-in Service
-    participant MS as Member Service
+    participant CS as Check-in
+    participant PL as Plans boundary TBD
     participant DB as checkin_db
-    participant D as Display Kiosk
+    participant D as Display kiosk
 
-    A->>K: POST /api/v1/checkin/devices<br/>{gym_id, device_name} (Admin JWT)
-    K->>CS: RegisterDevice
-    CS->>MS: GetGymLocation(gym_id)<br/>(verified workload channel)
-    MS-->>CS: Gym location
-    CS->>CS: Require location status ACTIVE
-    CS->>DB: Create versioned gym root key if absent
-    CS->>DB: Store kiosk and device-secret hash
-    CS-->>A: {device_id, api_secret}<br/>(secret returned once)
-    A->>D: Install device credential securely
+    A->>K: RegisterDevice(gym_id, device_name)
+    K->>CS: Authenticated admin request
+    Note over CS,PL: No authorized Plans V1 method exists yet
+    CS-->>A: Fail until later contract is implemented
+    Note over CS,DB: Future: verify active gym, then create key and device credential
+    Note over A,D: Future: install one-time credential securely
 ```
 
-No gym-location Kafka event is required. Provisioning synchronously verifies the canonical location through Member Service. Registering a device for a missing or closed gym fails.
+No gym-location Kafka event is introduced. Provisioning will use an explicit synchronous Plans contract rather than a stale Member location call.
 
 Device rules:
 
 - Generate a cryptographically random device secret.
-- Store only a password hash such as Argon2id; never store plaintext.
-- Return the plaintext credential only from successful registration.
-- Bind each device to one `gym_id`.
-- Support independent revocation without rotating the gym root key.
-- Store credentials in Android Keystore, a restricted kiosk-agent credential store, or equivalent—not browser `localStorage`.
+- Store only an established password hash such as Argon2id.
+- Return plaintext once after successful registration.
+- Bind each device to one opaque `gym_id`.
+- Support independent revocation.
+- Store credentials in Android Keystore or an equivalent restricted credential store, never browser `localStorage`.
 
----
-
-## Display Refresh Flow
-
-```mermaid
-sequenceDiagram
-    participant D as Display Kiosk
-    participant K as Kong
-    participant CS as Check-in Service
-    participant DB as checkin_db
-
-    D->>K: GET /api/v1/checkin/display/qr<br/>Device ID + device secret
-    K->>CS: GetDisplayQrPayload<br/>(no user JWT claims)
-    CS->>DB: Verify active device and load active root-key version
-    CS->>CS: Sign current and next UTC slots
-    CS-->>D: {current, next, slot_duration_seconds: 60}
-    D->>D: Display current payload
-    D->>D: Switch to next at active_at
-    D->>CS: Refresh before prefetched payload expires
-```
-
-The endpoint returns current and next payloads so a brief network interruption does not blank the screen. If both payloads expire, the kiosk must show an unavailable state and stop displaying an accepted QR. Check-in does not preload hours of tokens.
-
----
-
-## QR Payload and Signing
-
-Canonical payload:
+## QR Payload
 
 ```text
 v1.<gym_id>.<key_version>.<device_id>.<utc_slot>.<mac_base64url>
 ```
-
-Signing input and MAC:
 
 ```text
 utc_slot = floor(unix_seconds / 60)
@@ -104,185 +79,130 @@ message  = "checkin-qr:v1|<gym_id>|<key_version>|<device_id>|<utc_slot>"
 mac      = HMAC-SHA256(root_key, message)
 ```
 
-Canonicalization rules:
+Rules:
 
-- Use UTC Unix seconds; venue timezone and daylight-saving changes do not affect slots.
-- UUIDs use canonical lowercase text.
-- `key_version` and `utc_slot` use base-10 integers without leading zeroes.
-- MAC uses unpadded base64url.
-- Compare MACs in constant time.
-- Never include or return the root key in the payload, API response, log, metric, event, or Redis value.
+- Use UTC Unix seconds.
+- IDs use canonical text representation.
+- Integers use base 10 without leading zeroes.
+- MAC uses unpadded base64url and constant-time comparison.
+- Accept current and immediately previous slot only.
+- Never expose root-key material in payloads, APIs, logs, metrics, events, or Redis.
 
-Validation accepts the current slot and immediately previous slot for network and clock-boundary tolerance. It rejects next, older, and malformed slots.
+Root keys are random 32-byte values, encrypted at rest, versioned, rotated, and retired. Emergency rotation invalidates the previous key immediately.
 
-### Root-key lifecycle
-
-- Generate a random 32-byte root key when the first kiosk is provisioned for a verified gym.
-- Encrypt root-key material at rest and identify the protecting KMS/key-encryption key.
-- Assign monotonically increasing versions.
-- Regular rotation creates a new active version and permits a short documented overlap for the retiring version.
-- Emergency rotation retires the previous version immediately.
-- Rotate root keys periodically and after suspected compromise; 60-second QR rotation does not require changing the root key every minute.
-
----
-
-## QR Scan Flow
+## Future Scan Flow
 
 ```mermaid
 sequenceDiagram
     actor M as Member
-    participant APP as Mobile App
-    participant D as Display Kiosk
+    participant APP as Mobile app
+    participant D as Display kiosk
     participant K as Kong
-    participant CS as Check-in Service
+    participant CS as Check-in
     participant DB as checkin_db
-    participant MS as Member Service
+    participant MB as Member
     participant KF as Kafka
 
-    D-->>APP: Current 60-second signed QR
-    M->>APP: Scan QR
-    APP->>K: POST /api/v1/checkin/scan<br/>{member_id, gym_id, qr_payload} (Member JWT)
-    K->>CS: ProcessScan with trusted claims
-    CS->>CS: Parse canonical payload
-    CS->>CS: Require request gym_id == signed gym_id
-    CS->>DB: Load active device and referenced key version
-    CS->>CS: Verify HMAC for current/previous slot
-    CS->>MS: ValidateMembership(member_id, gym_id)<br/>(verified workload channel)
-    MS-->>CS: {valid, status}
-
+    D-->>APP: Current signed QR
+    M->>APP: Scan
+    APP->>K: ProcessScan(member_id, gym_id, qr_payload)
+    K->>CS: Request with trusted claims
+    CS->>CS: Parse and require request gym == signed gym
+    CS->>DB: Load active device and key version
+    CS->>CS: Verify HMAC and time slot
+    CS->>MB: ValidateMembership(member_id, gym_id) over mTLS
+    MB-->>CS: valid, status
     alt Valid QR and active membership
-        CS->>DB: Insert check-in and outbox event atomically
-        CS-->>APP: {success: true, message: "Check-in thành công"}
-        CS->>KF: Publish checkin.recorded.v1
-    else Invalid QR or membership
-        CS-->>APP: {success: false, message: "Mã QR không hợp lệ"}
+        CS->>DB: Insert check-in and outbox atomically
+        CS->>KF: checkin.recorded.v1
+        CS-->>APP: success
+    else Invalid
+        CS-->>APP: failure
     end
 ```
 
-The authenticated identity boundary must resolve the trusted member identity. Client-supplied IDs are never authoritative. `user_id`, `member_id`, and `gym_id` remain separate opaque identifiers.
+Trusted authentication must resolve the authoritative member identity. Client-supplied `member_id` is never sufficient by itself.
 
----
-
-## Data Model (YugabyteDB)
+## Future Data Model
 
 ```sql
 CREATE TABLE gym_qr_root_keys (
-    gym_id                UUID NOT NULL,
-    key_version           BIGINT NOT NULL,
+    gym_id                 VARCHAR(255) NOT NULL,
+    key_version            BIGINT NOT NULL,
     encrypted_key_material BYTEA NOT NULL,
-    kms_key_id             VARCHAR(255) NOT NULL,
-    status                 VARCHAR(20) NOT NULL, -- ACTIVE | RETIRING | RETIRED
-    created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    activated_at           TIMESTAMPTZ NOT NULL,
-    retired_at             TIMESTAMPTZ,
+    kms_key_id              VARCHAR(255) NOT NULL,
+    status                  VARCHAR(20) NOT NULL,
+    activated_at            TIMESTAMPTZ NOT NULL,
+    retired_at              TIMESTAMPTZ,
     PRIMARY KEY (gym_id, key_version)
 );
 
-CREATE UNIQUE INDEX uq_gym_active_qr_root_key
-    ON gym_qr_root_keys (gym_id) WHERE status = 'ACTIVE';
-
 CREATE TABLE kiosk_devices (
     id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    gym_id                UUID NOT NULL,
+    gym_id                VARCHAR(255) NOT NULL,
     device_name           VARCHAR(255) NOT NULL,
     api_secret_hash       VARCHAR(255) NOT NULL,
-    status                VARCHAR(20) NOT NULL, -- ACTIVE | REVOKED
+    status                VARCHAR(20) NOT NULL,
     created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    revoked_at            TIMESTAMPTZ,
-    last_authenticated_at TIMESTAMPTZ
+    revoked_at            TIMESTAMPTZ
 );
 
 CREATE TABLE check_ins (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    member_id     UUID NOT NULL,
-    gym_id        UUID NOT NULL,
+    member_id     VARCHAR(255) NOT NULL,
+    gym_id        VARCHAR(255) NOT NULL,
     device_id     UUID NOT NULL,
     checked_in_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX idx_checkin_gym_date
-    ON check_ins (gym_id, checked_in_at DESC);
 ```
 
-Service database boundaries use opaque `gym_id` references; there is no cross-database foreign key to Member's `gym_locations` table.
+`gym_id` and `member_id` are opaque cross-service strings. Check-in has no FK to Plans locations or Member profiles. Local device and key relationships remain Check-in-owned.
 
-Redis may cache derived current/next payloads for their short TTL. YugabyteDB plus the configured encryption/KMS boundary remains the durable authority for root keys and devices.
+Redis may cache only short-lived derived current/next payloads. YugabyteDB and the configured KMS boundary remain durable authorities for devices and root keys.
 
----
+## Future API and Authentication
 
-## API and Authentication
-
-| RPC | HTTP | Authentication | Purpose |
+| RPC | HTTP | Authentication | Status |
 |---|---|---|---|
-| `ProcessScan` | `POST /api/v1/checkin/scan` | Member JWT | Validate QR and record check-in |
-| `GetCheckInHistory` | `GET /api/v1/checkin/history/{member_id}` | Member/Admin JWT with scope enforcement | Query history |
-| `GetDailyCount` | `GET /api/v1/checkin/daily-count` | Admin JWT | Query gym attendance |
-| `RegisterDevice` | `POST /api/v1/checkin/devices` | Admin JWT | Verify gym and provision kiosk |
-| `GetDisplayQrPayload` | `GET /api/v1/checkin/display/qr` | Device credential only | Fetch current and next payload |
-| `RevokeDevice` | `DELETE /api/v1/checkin/devices/{device_id}` | Admin JWT | Revoke one kiosk |
-| `RotateGymQrRootKey` | `POST /api/v1/checkin/gyms/{gym_id}/qr-root-key:rotate` | Admin JWT | Regular or emergency key rotation |
+| `ProcessScan` | `POST /api/v1/checkin/scan` | Member JWT | Deferred |
+| `GetCheckInHistory` | `GET /api/v1/checkin/history/{member_id}` | Scoped Member/Admin JWT | Deferred |
+| `GetDailyCount` | `GET /api/v1/checkin/daily-count` | Admin JWT | Deferred |
+| `RegisterDevice` | `POST /api/v1/checkin/devices` | Admin JWT | Blocked on future Plans contract |
+| `GetDisplayQrPayload` | `GET /api/v1/checkin/display/qr` | Device credential | Deferred |
+| `RevokeDevice` | `DELETE /api/v1/checkin/devices/{device_id}` | Admin JWT | Deferred |
+| `RotateGymQrRootKey` | `POST /api/v1/checkin/gyms/{gym_id}/qr-root-key:rotate` | Admin JWT | Blocked on future Plans contract |
 
-Kong strips client-supplied trusted user headers before injecting validated JWT claims. The display route receives no user claims and is authenticated inside Check-in. Internal calls to Member use verified workload identity such as mTLS; `CHECKIN_SERVICE` is not a public user role.
+Kong strips client-supplied trusted user headers before injecting validated claims. Display routes receive no user claims and authenticate inside Check-in. `CHECKIN_SERVICE` is a workload identity, not a public role.
 
----
-
-## Kafka Events
-
-### Published
+## Future Kafka Event
 
 | Topic | Key | Payload |
 |---|---|---|
 | `checkin.recorded.v1` | `member_id` | `{member_id, gym_id, device_id, checked_in_at}` |
 
-`device_id` is the display kiosk ID extracted from the verified signed payload. No gym-location, kiosk, or QR-key lifecycle Kafka events are introduced; admin provisioning and lifecycle RPCs own those workflows.
+No location, kiosk, or QR-key lifecycle topic is needed. Plans V1 itself has no Kafka participation.
 
----
-
-## Clean Architecture Target
+## Target Structure
 
 ```text
 cmd/server/main.go
 internal/
 ├── domain/
-│   ├── checkin.go
-│   ├── kiosk_device.go
-│   ├── qr_root_key.go
-│   └── errors.go
 ├── usecase/
-│   ├── process_scan.go
-│   ├── register_device.go
-│   ├── get_display_qr_payload.go
-│   ├── revoke_device.go
-│   ├── rotate_qr_root_key.go
 │   └── port/
-│       ├── checkin_repo.go
-│       ├── device_repo.go
-│       ├── root_key_repo.go
+│       ├── checkin_repository.go
+│       ├── device_repository.go
+│       ├── root_key_repository.go
 │       ├── member_client.go
+│       ├── location_client.go   # Only after later Plans contract exists
 │       └── event_publisher.go
 ├── adapter/
 │   ├── grpc/
 │   ├── repository/
-│   ├── client/member_grpc_client.go
-│   └── kafka/event_publisher.go
+│   ├── member/
+│   ├── location/                # Deferred with contract
+│   └── kafka/
 └── config/
 ```
 
-The implementation should use a transactional outbox or equivalent atomic record/event mechanism for `checkin.recorded.v1`.
-
----
-
-## Required Implementation Tests
-
-- Deterministic HMAC test vectors and canonical payload encoding
-- Current and previous slots accepted; next, old, and malformed slots rejected
-- Wrong gym, device, key version, or MAC rejected
-- Constant-time MAC comparison
-- Device secret returned once, stored hashed, gym-bound, and revocable
-- Display endpoint returns current and next payload without exposing root material
-- Missing/closed gym rejected during provisioning
-- Customer JWT cannot authenticate as a kiosk; device credentials cannot invoke user/admin routes
-- Inactive or wrong-gym membership rejected
-- Regular rotation overlap and emergency immediate retirement
-- Expired prefetched payload and Redis-outage behavior
-- Check-in record and outbox event committed atomically
+No Check-in implementation work is part of G6–G8.

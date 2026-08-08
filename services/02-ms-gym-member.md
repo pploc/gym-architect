@@ -1,288 +1,242 @@
 # Member Service
 
-> **Tech:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL | **Port:** 50051 (gRPC) / 8080 (REST)
+> **Tech:** Java 26 + Spring Boot 4 | **DB:** PostgreSQL `member_db` | **Ports:** 50051 native gRPC / 8080 HTTP when a service-local gateway exists
+>
+> **Roadmap status:** This is the pending G8 Member boundary. Current code and historical G4/G5 evidence still contain pre-split location/catalog behavior. See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md) and [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
 
 ## Responsibilities
 
-- Membership lifecycle: `NONE → ACTIVE → PAUSED → ACTIVE → EXPIRED`
-- Subscription plans: `MONTHLY`, `YEARLY`, `LIFETIME`
-- Pause / resume with remaining days calculation (not applicable to LIFETIME)
-- Member profile management (name, phone, avatar, emergency contact)
-- **Gym location management** — owns the canonical `gym_locations` table
-- Gym and membership authorization for Check-in through `GetGymLocation` and `ValidateMembership`
-- Check-in owns kiosk credentials, QR root keys, payload issuance, and validation
-- Spending history query (delegates to Payment Service)
-- Multi-gym: each member belongs to a `gym_id`
+- Member profile shells and profile updates
+- Membership lifecycle: `NONE`, `ACTIVE`, `PAUSED`, `EXPIRED`
+- Purchase orchestration and Member-owned pending purchases
+- Frozen purchased-term snapshots on subscriptions
+- Membership lookup and validation
+- Membership lifecycle events, outbox, and processed-event idempotency
+- Pause, resume, expiry, and renewal behavior
 
----
+Member does not own gym locations, plan catalog data, plan availability, duration definitions, or VND list price. [Plans](10-ms-gym-plans.md) owns those records. Member stores only opaque `gym_id` and `plan_id` references.
+
+Payment and Check-in remain deferred production services. G8 uses a minimal fake Payment fixture only to prove purchase correlation, completion validation, and replay.
 
 ## State Machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> NONE: user.registered event
-
-    NONE --> ACTIVE: payment.completed.v1 (membership)
-
-    ACTIVE --> PAUSED: member requests pause
-    ACTIVE --> EXPIRED: end_date reached (scheduled job)
-
-    PAUSED --> ACTIVE: member requests resume
-    PAUSED --> EXPIRED: remaining_days = 0 & no resume
-
-    EXPIRED --> ACTIVE: payment.completed.v1 (renewal)
-
-    ACTIVE --> ACTIVE: payment.completed.v1 (renewal extends end_date)
-
-    note right of ACTIVE
-        LIFETIME members never
-        transition to EXPIRED.
-        Pause not allowed for LIFETIME.
-    end note
+    [*] --> NONE: identity.user.registered.v1
+    NONE --> ACTIVE: validated payment completion
+    ACTIVE --> PAUSED: member pauses
+    PAUSED --> ACTIVE: member resumes
+    ACTIVE --> EXPIRED: end date reached
+    EXPIRED --> ACTIVE: validated renewal payment
+    ACTIVE --> ACTIVE: validated renewal extends term
 ```
 
-### Pause / Resume Logic
+Lifetime subscriptions do not expire and cannot pause. Monthly and yearly lifecycle calculations use stored subscription snapshots, never a live Plans read.
 
+## Purchase Boundary
+
+```mermaid
+sequenceDiagram
+    participant C as Customer
+    participant MB as Member
+    participant PL as Plans
+    participant DB as member_db
+    participant FP as G8 Fake Payment
+    participant KF as Kafka
+
+    C->>MB: PurchaseMembership(plan_id, provider, discount_code?)
+    MB->>MB: Resolve trusted user, member, selected gym
+    MB->>MB: Reject nonblank discount_code
+    MB->>PL: ResolvePurchasablePlan(plan_id, selected_gym_id) over mTLS
+    PL-->>MB: plan_id, gym_id, type, duration_days, price_vnd
+    MB->>DB: Persist PENDING purchase with frozen terms
+    MB->>FP: InitiatePayment(reference_id=purchase_id)
+    FP-->>MB: payment_id, payment_url
+    MB->>DB: Attach payment_id
+    MB-->>C: payment_id, payment_url
+    FP->>KF: payment.completed.v1 reference_id=purchase_id
+    KF-->>MB: Completion event
+    MB->>DB: Lock purchase and validate event
+    MB->>DB: Activate from frozen terms; mark completed; record event
 ```
-Pause:
-  remaining_days = end_date - today
-  status = PAUSED
-  paused_at = now()
-
-Resume:
-  new_end_date = today + remaining_days
-  status = ACTIVE
-  paused_at = null
-  remaining_days = null
 
 Rules:
-  - LIFETIME cannot pause. Returns error: CANNOT_PAUSE_LIFETIME (gRPC INVALID_ARGUMENT)
-  - Max pause duration: 30 days (configurable per gym)
-  - Max pauses per subscription cycle: 2
-```
 
----
+1. Client supplies only `plan_id`, provider, and wire-compatible optional `discount_code`.
+2. Nonblank discount codes fail until an authoritative discount owner exists.
+3. Plans returns canonical gym and plan terms; client cannot set gym, type, duration, or price.
+4. Member persists frozen terms before initiating Payment.
+5. Payment `reference_id` is Member's unique `purchase_id`, never the reusable `plan_id`.
+6. Completion must match purchase ID, payment ID, payment type, user, gym, provider expectations, and `amount_vnd`.
+7. Activation and renewal use the frozen record. They never reread Plans.
+8. Processed-event and purchase state make completion replay idempotent.
+
+A Plans outage before purchase initiation fails closed. A Plans outage or catalog edit after initiation does not change completion behavior.
 
 ## Data Model
 
 ```mermaid
 erDiagram
-    GYM_LOCATIONS {
-        uuid id PK
-        uuid chain_id "parent chain/brand"
-        varchar name "FitZone Quan 1"
-        text address
-        varchar city
-        varchar status "ACTIVE | CLOSED"
-        timestamp created_at
-    }
-
     MEMBERS {
-        uuid id PK
-        uuid user_id FK "from Identity Service"
-        uuid gym_id FK
+        string id PK
+        string user_id UK "opaque Identity ID"
         varchar full_name
         varchar phone
         varchar avatar_url
         varchar emergency_contact
-        varchar status "NONE | ACTIVE | PAUSED | EXPIRED"
+        varchar status "NONE | ACTIVE | PAUSED | EXPIRED | SUSPENDED"
         timestamp created_at
         timestamp updated_at
     }
 
-    MEMBERSHIP_PLANS {
-        uuid id PK
-        uuid gym_id FK
-        varchar name "Monthly | Yearly | Lifetime"
-        varchar plan_type "MONTHLY | YEARLY | LIFETIME"
-        int duration_days "30 | 365 | null for LIFETIME"
+    PENDING_PURCHASES {
+        string id PK "purchase_id"
+        string member_id FK
+        string user_id "opaque Identity ID"
+        string gym_id "opaque Plans ID"
+        string plan_id "opaque Plans ID"
+        varchar plan_type
+        int duration_days
         bigint price_vnd
-        varchar description
-        boolean active
+        varchar provider
+        string payment_id
+        varchar status "PENDING | PAYMENT_INITIATED | COMPLETED | FAILED"
+        timestamp created_at
+        timestamp updated_at
     }
 
     SUBSCRIPTIONS {
-        uuid id PK
-        uuid member_id FK
-        uuid plan_id FK
+        string id PK
+        string member_id FK
+        string gym_id "opaque Plans ID"
+        string plan_id "opaque Plans ID"
+        varchar plan_type_snapshot
+        int duration_days_snapshot
+        bigint price_vnd_snapshot
         varchar status "ACTIVE | PAUSED | EXPIRED | CANCELLED"
         date start_date
         date end_date "null for LIFETIME"
         date paused_at
-        int remaining_days "set on pause"
-        int pause_count "max 2 per cycle"
+        int remaining_days
+        int pause_count
         timestamp created_at
+        timestamp updated_at
     }
 
-    GYM_LOCATIONS ||--o{ MEMBERS : "belongs to"
-    GYM_LOCATIONS ||--o{ MEMBERSHIP_PLANS : "offers"
-    MEMBERS ||--o{ SUBSCRIPTIONS : "has"
-    SUBSCRIPTIONS }o--|| MEMBERSHIP_PLANS : "uses"
+    MEMBERS ||--o{ PENDING_PURCHASES : initiates
+    MEMBERS ||--o{ SUBSCRIPTIONS : has
 ```
 
----
+Only Member-local relationships have foreign keys. `user_id`, `gym_id`, and `plan_id` are opaque strings without cross-service FKs. `plan_type_snapshot` is lifecycle vocabulary, not catalog ownership.
 
-## Check-in Integration Boundary
+## Membership Lifecycle
 
-Member Service remains the source of truth for gym locations and membership state. The future Check-in Service owns display kiosks, versioned QR root keys, short-lived HMAC payload issuance, and QR validation.
+Pause:
 
 ```text
-Kiosk provisioning:
-  1. An admin calls Check-in RegisterDevice(gym_id, device_name).
-  2. Check-in calls Member GetGymLocation(gym_id) over a verified workload channel.
-  3. Member returns the canonical location; Check-in requires status ACTIVE.
-  4. Check-in provisions its own root key and device credential.
-
-Member scan:
-  1. Check-in validates the signed QR locally.
-  2. Check-in calls Member ValidateMembership(member_id, gym_id).
-  3. Member confirms ACTIVE status and the required gym scope.
+require status == ACTIVE
+require plan_type_snapshot != LIFETIME
+remaining_days = end_date - today
+status = PAUSED
+paused_at = today
 ```
 
-Member's public contract exposes no QR secret API. Existing Member implementation cleanup is separate work: remove its QR classes and scheduler, and drop `gym_qr_secrets` through a new Flyway migration rather than modifying the deployed initial migration.
+Resume:
 
----
+```text
+require status == PAUSED
+end_date = today + remaining_days
+status = ACTIVE
+paused_at = null
+remaining_days = null
+```
+
+Scheduled expiry and warning jobs read subscriptions and their snapshots. They never call Plans.
 
 ## Kafka Events
 
 ### Published
 
-| Topic | Key | Trigger | Payload |
-|-------|-----|---------|---------|
-| `membership.activated.v1` | `member_id` | Payment completed | `{member_id, user_id, plan_type, start_date, end_date, gym_id, is_renewal, timestamp}` |
-| `membership.paused.v1` | `member_id` | Member pauses | `{member_id, paused_at, remaining_days, gym_id}` |
-| `membership.resumed.v1` | `member_id` | Member resumes | `{member_id, new_end_date, gym_id}` |
-| `membership.expiring-soon.v1` | `member_id` | Scheduled job (7d before) | `{member_id, end_date, plan_type, gym_id}` |
-| `membership.expired.v1` | `member_id` | Scheduled job (end_date reached) | `{member_id, expired_at, gym_id}` |
+| Topic | Trigger |
+|---|---|
+| `membership.activated.v1` | Validated purchase completion or renewal |
+| `membership.paused.v1` | Successful pause |
+| `membership.resumed.v1` | Successful resume |
+| `membership.expiring-soon.v1` | Snapshot-backed expiry warning |
+| `membership.expired.v1` | Subscription expiry |
 
 ### Consumed
 
 | Topic | Action |
-|-------|--------|
-| `identity.user.registered.v1` | Create member shell (status=NONE) |
-| `identity.user.suspended.v1` | Freeze member profile, cancel active subscription |
-| `payment.completed.v1` (type=MEMBERSHIP) | Activate or renew subscription |
+|---|---|
+| `identity.user.registered.v1` | Create gym-neutral member shell with `NONE` status |
+| `identity.user.suspended.v1` | Suspend profile and apply subscription policy idempotently |
+| `payment.completed.v1` with `type=MEMBERSHIP` | Resolve `reference_id` as `purchase_id`, validate frozen record, activate idempotently |
 
----
-
-## Scheduled Jobs
-
-| Job | Schedule | Action |
-|-----|----------|--------|
-| Expiry Check | `0 6 * * *` (6 AM) | Find subscriptions where `end_date <= today`, set EXPIRED |
-| Expiry Warning | `0 9 * * *` (9 AM) | Find subscriptions where `end_date = today + 7d`, publish `membership.expiring-soon.v1` |
-
----
-
-## API (gRPC)
+## API Target
 
 ```protobuf
 service MemberService {
-  // Member profile
   rpc GetMember(GetMemberRequest) returns (MemberResponse);
   rpc UpdateProfile(UpdateProfileRequest) returns (MemberResponse);
-  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);  // Admin
+  rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
 
-  // Membership
-  rpc GetPlans(GetPlansRequest) returns (PlansResponse);
   rpc PurchaseMembership(PurchaseMembershipRequest) returns (PurchaseResponse);
   rpc PauseMembership(PauseMembershipRequest) returns (MembershipResponse);
   rpc ResumeMembership(ResumeMembershipRequest) returns (MembershipResponse);
   rpc GetMembershipStatus(GetMembershipStatusRequest) returns (MembershipResponse);
 
-  // Internal: requires verified ms-gym-identifier workload identity; no HTTP mapping.
+  // Identifier only; workload mTLS; no HTTP mapping.
   rpc GetMembershipStatusByUserId(GetMembershipStatusByUserIdRequest)
       returns (MembershipResponse);
 
-  // Gym Location Management (Admin)
-  rpc CreateGymLocation(CreateGymLocationRequest) returns (GymLocationResponse);
-  rpc UpdateGymLocation(UpdateGymLocationRequest) returns (GymLocationResponse);
-  rpc ListGymLocations(ListGymLocationsRequest) returns (GymLocationsResponse);
-  rpc GetGymLocation(GetGymLocationRequest) returns (GymLocationResponse);
+  // Deferred Check-in policy; no public HTTP mapping.
+  rpc ValidateMembership(ValidateMembershipRequest)
+      returns (ValidateMembershipResponse);
 
-  // Internal-Only (blocked at API Gateway from external HTTP routing)
-  rpc ValidateMembership(ValidateMembershipRequest) returns (ValidateMembershipResponse);
-  rpc ListMembersByStatus(ListMembersByStatusRequest) returns (ListMembersByStatusResponse);
-}
-
-message GetMembershipStatusByUserIdRequest {
-  string user_id = 1;
+  rpc ListMembersByStatus(ListMembersByStatusRequest)
+      returns (ListMembersByStatusResponse);
 }
 ```
 
-`GetMembershipStatus(member_id)` remains unchanged. The user-ID lookup returns
-`NONE` for a known user with no subscription. If Member cannot answer, it returns
-an availability failure and Identifier does not guess. `user_id`, `member_id`,
-and `gym_id` remain separate opaque identifiers.
+G6 removes `GetPlans` and all gym-location management/lookup RPCs from Member. Their presence in current pre-split Protobuf or code is pending implementation work, not target ownership.
 
----
+`GetMembershipStatusByUserId` receives both `user_id` and `gym_id`. It returns `NONE` for a known user without a subscription at that gym. Identifier does not guess after an availability failure.
 
-## Internal Route Security
+## Workload Security
 
-Internal-only gRPC methods (`GetMembershipStatusByUserId`, `ValidateMembership`,
-`ListMembersByStatus`) are blocked from external access:
-1. **Kong Routing:** Kong only registers routes for public endpoints. Internal method paths are not mapped in the `*_http.yaml` source of truth.
-2. **Verified workload channel:** internal callers use mTLS; the certificate identity/SAN identifies the workload and a caller-supplied role or `x-service-id` header alone establishes no trust. `GetMembershipStatusByUserId` authorizes only the verified `ms-gym-identifier` peer.
-3. **Network Policies:** K8s network policies restrict native gRPC ingress on port `50051` to authorized service pods, including the Identifier-to-Member path.
+- Identifier may call only `GetMembershipStatusByUserId` over a verified mTLS identity.
+- Member may call only Plans `ResolvePurchasablePlan` using its own certificate and independent client configuration.
+- Future Check-in may call Member `ValidateMembership` only after that service is opened and its workload policy is implemented.
+- Internal methods have no HTTP mapping or Kong route.
+- Workload metadata is not trusted unless bound to the verified peer certificate.
+- End-user trusted headers are never forwarded as workload credentials.
 
----
+## Deferred Check-in Boundary
 
-## Target Clean Architecture
+Plans owns location data; Member owns membership decisions. Future scan processing may call Member `ValidateMembership(member_id, gym_id)`. Kiosk provisioning must not call Member for location data. Plans V1 has no Check-in-authorized method, so a future Check-in-to-Plans workload contract must be frozen before provisioning implementation begins.
 
-The current Member repository may still contain QR implementation classes until its separate cleanup is completed; they are not part of the target service contract.
+## Target Structure
 
-```
+```text
 src/main/java/com/gym/member/
 ├── domain/
-│   ├── model/
-│   │   ├── Member.java
-│   │   ├── Subscription.java
-│   │   ├── MembershipPlan.java
-│   │   ├── MembershipStatus.java          // enum
-│   │   ├── PlanType.java                   // MONTHLY, YEARLY, LIFETIME
-│   │   └── GymLocation.java
-│   ├── exception/
-│   │   ├── MemberNotFoundException.java
-│   │   ├── CannotPauseLifetimeException.java
-│   │   └── MaxPausesExceededException.java
-│   └── event/
-│       ├── MembershipActivatedEvent.java
-│       └── MembershipExpiringSoonEvent.java
+│   ├── member/
+│   ├── subscription/          # Includes purchased snapshots
+│   └── purchase/              # Pending-purchase state
 ├── application/
-│   ├── port/
-│   │   ├── in/
-│   │   │   ├── PurchaseMembershipUseCase.java
-│   │   │   ├── PauseMembershipUseCase.java
-│   │   │   ├── ResumeMembershipUseCase.java
-│   │   │   ├── ManageGymLocationUseCase.java
-│   │   │   └── ListMembersByStatusUseCase.java
-│   │   └── out/
-│   │       ├── MemberRepository.java
-│   │       ├── SubscriptionRepository.java
-│   │       ├── GymLocationRepository.java
-│   │       ├── PaymentClient.java
-│   │       └── EventPublisher.java
-│   ├── service/
-│   │   ├── MembershipService.java
-│   │   └── GymLocationService.java
-│   └── scheduler/
-│       ├── ExpiryCheckJob.java
-│       └── ExpiryWarningJob.java
+│   ├── profile/
+│   ├── membership/
+│   ├── purchase/
+│   └── lifecycle/
 ├── adapter/
 │   ├── in/grpc/
-│   │   ├── MemberGrpcHandler.java
-│   │   └── MemberProtoMapper.java
-│   ├── out/persistence/
-│   │   ├── MemberJpaEntity.java
-│   │   ├── SubscriptionJpaEntity.java
-│   │   ├── GymLocationJpaEntity.java
-│   │   ├── MemberJpaRepository.java
-│   │   └── MemberPersistenceAdapter.java
-│   ├── out/grpc/
-│   │   └── PaymentGrpcClient.java
-│   └── out/kafka/
-│       ├── MemberEventPublisher.java
-│       └── MemberEventConsumer.java
+│   └── out/
+│       ├── persistence/       # Members, subscriptions, purchases, outbox, processed events
+│       ├── plans/             # ResolvePurchasablePlan mTLS client
+│       ├── payment/
+│       └── kafka/
 └── config/
-    └── GrpcConfig.java
 ```
+
+No target package contains `GymLocation`, catalog `MembershipPlan`, location management, or a local plan repository.

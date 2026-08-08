@@ -2,144 +2,106 @@
 
 ## Purpose
 
-Complete and release the shared platform foundations before ordinary services adopt them. The dependency order is:
+Finish shared foundations, then establish three service boundaries in dependency order:
 
 ```text
 contract freeze
   -> gym-proto release
-  -> common-java and common-go in parallel
-  -> cross-language release candidates
-  -> ms-gym-member Java validation
-  -> stable common releases
-  -> Kong fixture setup and ms-gym-identifier
-  -> ordinary-service adoption
+  -> common-java and common-go
+  -> cross-language validation
+  -> Member foundation validation
+  -> Kong and Identifier interoperability
+  -> Plans contracts
+  -> ms-gym-plans
+  -> Identifier + Member + Plans integration
 ```
 
-`gym-proto` comes first because it owns generated types and wire contracts. `common-java` and `common-go` can proceed in parallel only after those contracts are frozen.
+Only Identifier, Member, and Plans are active service scope. Other service documents are catalog-only until a later roadmap explicitly opens them.
 
-## Current baseline
+## Current status
 
-Historical baselines below predate the current Phase 5 repair. Do not use them as release evidence. Recheck every SHA, working tree, immutable tag, and resolved package checksum before validating a gate.
+- G0–G4: historical foundation gates completed with evidence retained under `docs/evidence/foundation-first`.
+- G5: passed Identifier-led Kong/Identifier/Member E2E through `gym-infra/kong/run-g5.sh`.
+- G6: pending Plans and revised Member contract release.
+- G7: pending `ms-gym-plans` implementation.
+- G8: pending clean three-service integration.
 
-| Repository | Historical observation | Current classification |
-|---|---|---|
-| `gym-proto` | `develop` at `bc08215`; tag `v1.1.0` exists | Historical observation; immutable release provenance requires revalidation |
-| `common-java` | `candidate/v2.0.0-rc.6` at `3c34cf3`; tag `v2.0.0-rc.6` published | Historical observation; G3/G4 must be revalidated against immutable release artifacts |
-| `common-go` | `candidate/v0.3.0-rc.7` at `a17d35e`; tag `v0.3.0-rc.7` published | Historical observation; G3/G4 must be revalidated against immutable release artifacts |
-| `ms-gym-member` | `develop` at `342377d`; one local commit ahead of origin | Historical observation; current workload mTLS and dependency validation pending |
-| `gym-infra` | `develop` at `f24d64f`; one local commit ahead of origin | Historical observation; current Kong fixture and real topology validation pending |
-| `ms-gym-identifier` | Repository absent | Stale: repository exists; current dependency and live-topology validation pending |
+G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 changes that boundary, so revised Member behavior requires new G8 evidence. Member external HTTP remains unexposed until a real service-local gateway exists.
 
-Historical snapshot date: 2026-08-03.
+No customer or production data exists. Phases 6–8 use a coordinated contract and schema reset. Do not add migration, backfill, compatibility forwarding, dual-write, or rollback machinery for disposable pre-production data.
 
 ## Phase documents
 
 1. [Phase 0 — Contract freeze](00-contract-freeze.md)
-2. [Phase 1 — gym-proto](01-gym-proto.md)
+2. [Phase 1 — `gym-proto`](01-gym-proto.md)
 3. [Phase 2 — Common libraries](02-common-libraries.md)
 4. [Phase 3 — Foundation release](03-foundation-release.md)
-5. [Phase 4 — ms-gym-member](04-ms-gym-member.md)
+5. [Phase 4 — `ms-gym-member` foundation validator](04-ms-gym-member.md)
 6. [Phase 5 — Kong and Identifier](05-kong-identifier.md)
+7. [Phase 6 — Plans contracts](06-plans-contracts.md)
+8. [Phase 7 — `ms-gym-plans`](07-ms-gym-plans.md)
+9. [Phase 8 — Three-service integration](08-three-service-integration.md)
 
-Each phase is an implementation handoff. Execute it only after its prerequisites pass and preserve evidence for the next gate.
+Each phase is an implementation handoff. Execute it only after prerequisites pass and preserve evidence for next gate.
 
-## Current gate status
+## Target ownership
 
-- **G1:** historical release evidence exists; immutable artifact provenance must be revalidated without fabricating owner approval.
-- **G2:** historical technical evidence exists for its recorded source trees; it is not proof for newer sources.
-- **G3:** historical release claims conflict with the baseline and require immutable artifact and cross-language-matrix revalidation.
-- **G4:** historical service-validation evidence exists; revalidate immutable pins on each release.
-- **G5:** passed Identifier-led Kong/Identifier/Member business E2E via `gym-infra/kong/run-g5.sh`; Member external HTTP remains intentionally unexposed until a real Member gateway exists.
-- **Phase 4:** independent correctness work may proceed, but promotion requires its current gate evidence.
+| Boundary | Identifier | Member | Plans |
+|---|:---:|:---:|:---:|
+| Users, credentials, JWTs | owner | — | — |
+| Selected-gym token | owner | membership lookup | active-gym lookup |
+| Member profile | — | owner | — |
+| Subscription and lifecycle | — | owner | — |
+| Gym location | opaque reference | opaque reference | owner |
+| Plan catalog and price | — | purchased snapshot | owner |
+| Membership validation | — | owner | — |
+
+Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-negative `int64 price_vnd` and VND only. Cross-service IDs are opaque strings and never cross-service database foreign keys.
 
 ## Governing rules
 
-1. `gym-proto` owns API schemas, event schemas, auth vocabulary, error mappings, topic/subject rules, retry/DLQ contracts, and cross-language fixtures.
-2. Common libraries pin tagged generated artifacts. Ordinary services pin stable common-library releases.
-3. `ms-gym-member` is the designated Java release-candidate validator. Contract harnesses and Kong mock upstreams are not production adopters.
-4. Do not copy unfinished claim parsing, Protobuf framing, retry, commit, or DLQ logic into services.
-5. Kafka is at-least-once. Producer idempotence does not make DB and Kafka atomic. Services use idempotent handlers and transactional outboxes where needed.
-6. Kong establishes the external JWT trust boundary. Common libraries consume trusted claims; normal downstream paths do not revalidate end-user JWT signatures.
-7. `gym_id` is an opaque cross-service string, never a database foreign key to another service database.
-8. User roles and workload identities are separate trust domains.
-9. Releases are immutable and tag-derived. Branch pushes validate but do not publish or mutate source version files.
-10. Technical evidence and human approval are separate. Never fabricate owner approval; leave the manifest pending when approval is absent.
-11. Kafka is greenfield. No deployed JSON topics or offsets exist. Implement only the final Protobuf topics and groups; do not build dual-read, dual-write, offset migration, or JSON compatibility.
-
-## Rejected circular or unnecessary gates
-
-- Kong evidence does not block Kafka implementation or Kafka release.
-- Identifier does not block base Kong fixture configuration.
-- Owner approval does not block source implementation, testing, or an immutable technical RC; it gates promotion/production use.
-- `ms-gym-member` must not migrate against an untagged or Maven-local shared build. It may consume an immutable RC solely as the designated validator.
-- `common-go` stable must not require Identifier adoption before Identifier can consume it. Record service adoption separately.
+1. `gym-proto` owns API/event schemas, auth vocabulary, error mappings, topic rules, and generated artifacts.
+2. Common libraries own shared trusted-claim, workload-auth, observability, Kafka framing, retry, commit, and DLQ behavior.
+3. Kong establishes external JWT trust. User roles and workload identities remain separate trust domains.
+4. Identifier owns identity, Member owns subscriptions, and Plans owns locations/catalog.
+5. Member orchestrates membership purchase and obtains trusted terms from Plans. Client input never supplies authoritative price, type, or duration.
+6. Member stores purchased terms on subscription. Later catalog edits affect only later purchases.
+7. Plans V1 has no Kafka producer, consumer, topic, outbox, or cache.
+8. Releases are immutable and tag-derived. Technical pass and owner approval remain separate.
+9. No custom persistence queries for Plans filters; compose Spring Data JPA Specifications.
+10. No work for deferred services unless needed to preserve an explicit boundary reference.
 
 ## Readiness gates
 
 | Gate | Meaning | Required evidence |
 |---|---|---|
-| G0 — Contract frozen | Cross-repository vocabulary and wire decisions are consistent | API/topic/JWT/auth matrices, reviewed generated diff |
-| G1 — Proto released | Canonical contracts and Java/Go artifacts are immutable | Tag, package coordinates, checksums, Buf and fixture reports |
-| G2 — Libraries complete | Both common libraries implement the frozen contract | Unit/static/race tests and real Kafka/Registry tests |
-| G3 — Foundation RC | Exact tagged RCs pass one cross-language matrix | Java-to-Go, Go-to-Java, retry/commit/DLQ reports |
-| G4 — Stable foundation | Stable common tags exist; Java RC passed Member validation | Stable tags, external import checks, Member adoption report |
-| G5 — Edge interoperability | Kong and Identifier enforce the live trust contract | Proxy capture and register/login/refresh/event E2E report |
+| G0 — Contract frozen | Shared vocabulary and wire decisions agree | API/topic/JWT/auth matrices and generated diff |
+| G1 — Proto released | Canonical contracts and generated artifacts are immutable | Tag, coordinates, checksums, Buf reports |
+| G2 — Libraries complete | Common libraries implement frozen contracts | Unit/static/race and Kafka/Registry tests |
+| G3 — Foundation RC | Cross-language matrix passes | Java-to-Go, Go-to-Java, retry/commit/DLQ reports |
+| G4 — Stable foundation | Stable common tags and Member validation pass | Stable tags, import checks, Member report |
+| G5 — Edge interoperability | Kong and Identifier enforce trust contract | Proxy capture and auth/member E2E |
+| G6 — Plans contracts | Plans API and revised Member boundary are immutable | Buf checks, break report, artifacts, exposure/auth matrices |
+| G7 — Plans service | Plans behavior, schema, security, and deployment pass | Tests, migration report, API fixtures, image/Helm evidence |
+| G8 — Three-service integration | Identifier, Member, and Plans pass clean-boundary E2E | Three-service tests, schema inspection, mTLS and Kong evidence |
 
-Definitions:
+## Active-scope freeze
 
-- **Implementation complete:** source and tests satisfy the frozen contract.
-- **Release candidate:** immutable prerelease tag passes the contract matrix.
-- **Stable:** immutable non-RC tag has no unresolved technical blocker.
-- **Adoption proven:** a designated real service passes service-level integration and rollback tests.
-- **Owner-approved:** governance status recorded only after accountable approval.
+Until G8, do not start implementation phases for Payment, Check-in, Workout, Trainer, Promotion, Notification, or Analytics. Their docs may be corrected only to preserve Identifier/Member/Plans boundaries.
 
-## Release and adoption matrix
+Allowed repositories in Phases 6–8:
 
-Recommended targets; adjust only for a documented SemVer reason.
-
-| Stage | `gym-proto` / `proto-go` | `common-java` | `common-go` | Allowed adopters |
-|---|---|---|---|---|
-| Contract implementation | RC/develop | develop | develop | Contract harness only |
-| Foundation RC | `v1.1.0` | `v2.0.0-rc.1` | `v0.3.0-rc.1` | Member validator; disposable fixtures |
-| Java validation | same | RC | RC | Member only |
-| Stable foundations | same | `v2.0.0` | `v0.3.0` | Identifier may pin stable |
-| G5 passed | compatible patch allowed | stable | stable | Controlled ordinary-service adoption opens |
-
-## Ordinary-service adoption freeze
-
-Until G4, Workout, Check-in, Payment, Trainer, Notification, Promotion, and Analytics must not:
-
-- import foundation RCs;
-- emit the new `.v1` records;
-- implement local copies of shared framing, trusted-claim parsing, retry, or DLQ logic.
-
-Allowed exceptions:
-
-- `ms-gym-member` as the Java RC validator;
-- foundation contract-test applications;
-- disposable Kafka/Schema Registry environments;
-- Kong mock upstream and fixture signer.
-
-After G4, Identifier may consume stable `common-go`. Open remaining adoption only after G5, one service at a time.
+- `gym-proto`;
+- `ms-gym-plans`;
+- `ms-gym-member`;
+- `ms-gym-identifier`;
+- shared infrastructure needed to run those three services;
+- architecture, service, flow, and evidence docs.
 
 ## Shared evidence requirements
 
-Every report records exact git SHAs, artifact versions, fixture checksums, infrastructure versions, command results, and timestamps. Expected artifacts:
-
-- Buf format/lint/breaking report;
-- generated-code drift report;
-- fixture and release checksums;
-- Schema Registry positive/negative compatibility report;
-- cross-language matrix;
-- retry/commit/DLQ transcript;
-- raw source/DLQ frame checksums;
-- Member adoption report;
-- Kong upstream-header capture;
-- Identifier E2E report;
-- package provenance/SBOM where available.
-
-A missing approval remains explicitly pending and does not become a technical pass.
+Every report records exact git SHAs, artifact versions, checksums, infrastructure versions, commands, results, and timestamps. Owner approval remains explicitly pending until provided.
 
 ## Documentation maintenance
 
-When a contract decision changes, update this index, the affected phase file, `gym-proto/contracts`, relevant ADRs, and platform architecture/service documentation together. Replace obsolete implementation plans rather than leaving contradictory release or transport instructions active.
+When a boundary changes, update this index, affected phase, `gym-proto` contracts, architecture, service, flow, and infrastructure docs together. Historical gate evidence remains unchanged; add supersession notes instead of rewriting what a completed gate proved.

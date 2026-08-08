@@ -1,499 +1,201 @@
 # Kafka Event Catalog
 
-All async events flowing through Kafka. Schema format: **Protobuf** (reuses gRPC message definitions). Kafka is greenfield: no JSON topics, envelopes, or offsets were deployed, so there is no dual-read, dual-write, adapter, or offset migration.
+> **Roadmap status:** The nine-topic v1 wire-format inventory below is the released freeze. `identity.email.verification-requested.v1` exists on the current development branch but is not in that released inventory. G8 uses a fake Payment fixture for integration proof. Other event messages may have Protobuf definitions while their producers, consumers, and deployment remain deferred. Plans V1 has no Kafka participation.
 
----
+Kafka values use concrete Protobuf messages with Schema Registry framing. Kafka is greenfield: no JSON topics, envelopes, or deployed offsets require compatibility adapters.
 
-## Frozen v1 Contract
+## Frozen v1 Topics
 
-The first deployed generation consists of exactly these topics:
+| Event | Topic | Subject | Producer through G8 |
+|---|---|---|---|
+| `UserRegisteredEvent` | `identity.user.registered.v1` | `identity.user.registered.v1-value` | Identifier |
+| `UserSuspendedEvent` | `identity.user.suspended.v1` | `identity.user.suspended.v1-value` | Identifier |
+| `UserRoleChangedEvent` | `identity.user.role-changed.v1` | `identity.user.role-changed.v1-value` | Identifier |
+| `PaymentCompletedEvent` | `payment.completed.v1` | `payment.completed.v1-value` | G8 fake Payment fixture; production Payment deferred |
+| `MembershipActivatedEvent` | `membership.activated.v1` | `membership.activated.v1-value` | Member |
+| `MembershipPausedEvent` | `membership.paused.v1` | `membership.paused.v1-value` | Member |
+| `MembershipResumedEvent` | `membership.resumed.v1` | `membership.resumed.v1-value` | Member |
+| `MembershipExpiringSoonEvent` | `membership.expiring-soon.v1` | `membership.expiring-soon.v1-value` | Member |
+| `MembershipExpiredEvent` | `membership.expired.v1` | `membership.expired.v1-value` | Member |
 
-| Event | Topic | Subject |
-|---|---|---|
-| `UserRegisteredEvent` | `identity.user.registered.v1` | `identity.user.registered.v1-value` |
-| `UserSuspendedEvent` | `identity.user.suspended.v1` | `identity.user.suspended.v1-value` |
-| `UserRoleChangedEvent` | `identity.user.role-changed.v1` | `identity.user.role-changed.v1-value` |
-| `PaymentCompletedEvent` | `payment.completed.v1` | `payment.completed.v1-value` |
-| `MembershipActivatedEvent` | `membership.activated.v1` | `membership.activated.v1-value` |
-| `MembershipPausedEvent` | `membership.paused.v1` | `membership.paused.v1-value` |
-| `MembershipResumedEvent` | `membership.resumed.v1` | `membership.resumed.v1-value` |
-| `MembershipExpiringSoonEvent` | `membership.expiring-soon.v1` | `membership.expiring-soon.v1-value` |
-| `MembershipExpiredEvent` | `membership.expired.v1` | `membership.expired.v1-value` |
+The current branch also defines `EmailVerificationRequestedEvent` for `identity.email.verification-requested.v1`; it remains outside the released nine-topic wire-format inventory until a later contract release includes it. Other Protobuf event messages in this catalog are versioned schema definitions, but their topics, producers, consumers, and deployments remain deferred.
 
-All other events in this catalog are future designs and are not deployed until
-they receive an explicit versioned contract.
+Topic names follow `{domain}.{entity}.{action}.v1`. Subjects use `TopicNameStrategy` (`<topic>-value`) with `BACKWARD` compatibility. Production uses `auto.register.schemas=false`. Member's consumer group is `ms-gym-member-v1`; DLQ topics use `{topic}.DLQ`.
 
-Topic names follow `{domain}.{entity}.{action}.v1`. Subjects use
-`TopicNameStrategy` (`<topic>-value`) with `BACKWARD` compatibility, and
-production sets `auto.register.schemas=false`. The initial Member consumer group
-is `ms-gym-member-v1`; DLQ topics use `{topic}.DLQ`.
-
----
-
-## Event Flow Map
+## G8 Event Flow
 
 ```mermaid
-graph LR
-    subgraph "Producers"
-        IS[Identity Service]
-        MS[Member Service]
-        PS[Payment Service]
-        WS[Workout Service]
-        TS[Trainer Service]
-        CS[Check-in Service]
-        PRS[Promotion Service]
-        AS_PROD[Analytics Service]
-    end
+flowchart LR
+    ID[Identifier] --> IR[identity.user.registered.v1]
+    ID --> IS[identity.user.suspended.v1]
+    ID --> IRC[identity.user.role-changed.v1]
+    ID --> EV[identity.email.verification-requested.v1]
 
-    subgraph "Kafka Topics"
-        T1[identity.user.registered.v1]
-        T1_SUB[identity.user.suspended.v1]
-        T2[membership.activated.v1]
-        T3[membership.paused.v1]
-        T4[membership.resumed.v1]
-        T5[membership.expiring-soon.v1]
-        T6[membership.expired.v1]
-        T7[payment.completed.v1]
-        T8[payment.failed]
-        T9[payment.refunded]
-        T10[workout.logged]
-        T11[booking.requested]
-        T12[booking.accepted]
-        T13[booking.rejected]
-        T14[booking.completed]
-        T15[booking.cancelled]
-        T15_EXP[booking.expired]
-        T15_AR[booking.auto-rejected]
-        T16[checkin.recorded]
-        T17[promotion.published]
-        T18[trainer.created]
-        T18_SUB[trainer.suspended]
-        T19[analytics.member-at-risk]
-    end
+    IR --> MB[Member]
+    IS --> MB
 
-    subgraph "Consumers"
-        MS2[Member Service]
-        NS[Notification Service]
-        AS[Analytics Service]
-        TS2[Trainer Service]
-        PS2[Payment Service]
-    end
+    FP[G8 Fake Payment] --> PC[payment.completed.v1]
+    PC --> MB
 
-    IS --> T1 & T1_SUB
-    MS --> T2 & T3 & T4 & T5 & T6
-    PS --> T7 & T8 & T9
-    WS --> T10
-    TS --> T11 & T12 & T13 & T14 & T15 & T15_EXP & T15_AR & T18 & T18_SUB
-    CS --> T16
-    PRS --> T17
-    AS_PROD --> T19
-
-    T1 --> MS2
-    T1_SUB --> MS2 & TS2
-    T7 --> MS2 & NS & AS & TS2
-    T8 --> NS
-    T9 --> NS & TS2
-    T2 --> NS & AS
-    T3 --> NS & AS & PS2
-    T4 --> NS & AS
-    T5 & T6 --> NS & AS
-    T10 --> AS
-    T11 & T12 & T13 --> NS & AS
-    T14 --> AS
-    T15 --> NS & AS & PS2
-    T15_AR --> NS & PS2
-    T16 --> AS
-    T17 --> NS
-    T18_SUB --> PS2 & NS
-    T19 --> NS
+    MB --> MA[membership.activated.v1]
+    MB --> MP[membership.paused.v1]
+    MB --> MR[membership.resumed.v1]
+    MB --> ME[membership.expiring-soon.v1]
+    MB --> MX[membership.expired.v1]
 ```
 
----
+Plans is intentionally absent. Plans V1 has no producer, consumer, topic, outbox, retry consumer, DLQ, or Schema Registry dependency.
 
-## Event Definitions
+## Cross-Service Identifier Rule
 
-### identity.user.registered.v1
+Fields such as `user_id`, `member_id`, `gym_id`, `plan_id`, `purchase_id`, and `payment_id` are opaque strings at service boundaries. A service may use UUIDs for its own IDs, but consumers must not infer database type or create cross-service FKs.
+
+## Identity Events
+
+Identity events are gym-neutral. `gym_id` is reserved in the current Protobuf contracts and must not be published.
+
+### `identity.user.registered.v1`
 
 | Field | Type | Description |
-|-------|------|-------------|
-| `user_id` | string (UUID) | New user ID |
+|---|---|---|
+| `user_id` | string | Opaque Identifier ID |
 | `email` | string | User email |
 | `full_name` | string | Display name |
-| `role` | string | CUSTOMER, TRAINER, ADMIN |
-| `gym_id` | string (UUID) | Home gym location |
-| `auth_provider` | string | LOCAL, GOOGLE |
-| `timestamp` | int64 | Unix millis |
+| `role` | string | `CUSTOMER`, `TRAINER`, or `ADMIN` |
+| `auth_provider` | string | `LOCAL` or `GOOGLE` |
+| `timestamp` | int64 | Unix epoch timestamp |
 
 **Key:** `user_id`  
-**Consumers:** Member Service (create member profile)
+**Consumer through G8:** Member creates an idempotent gym-neutral profile shell.
 
----
-
-### identity.user.suspended.v1
+### `identity.user.suspended.v1`
 
 | Field | Type | Description |
-|-------|------|-------------|
-| `user_id` | string (UUID) | Suspended user ID |
-| `role` | string | CUSTOMER, TRAINER, ADMIN |
-| `gym_id` | string (UUID) | Gym location |
-| `timestamp` | int64 | Unix millis |
+|---|---|---|
+| `user_id` | string | Suspended Identifier ID |
+| `role` | string | Identity role |
+| `timestamp` | int64 | Unix epoch timestamp |
 
 **Key:** `user_id`  
-**Consumers:** Member Service (freeze profile), Trainer Service (cancel pending classes)
+**Consumer through G8:** Member applies suspension policy idempotently. Trainer consumption is deferred.
 
----
+### `identity.user.role-changed.v1`
 
-### membership.activated.v1
+| Field | Type |
+|---|---|
+| `user_id` | string |
+| `old_role` | string |
+| `new_role` | string |
+| `timestamp` | int64 |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `member_id` | string (UUID) | Member ID |
-| `user_id` | string (UUID) | User ID |
-| `plan_type` | string | MONTHLY, YEARLY, LIFETIME |
-| `start_date` | string | ISO date |
-| `end_date` | string | ISO date, null for LIFETIME |
-| `gym_id` | string (UUID) | Gym location |
-| `is_renewal` | bool | True if renewing |
-| `timestamp` | int64 | Unix millis |
+`gym_id` is not part of any identity event payload above.
 
-**Key:** `member_id`  
-**Consumers:** Notification Service, Analytics Service
-
----
-
-### membership.paused.v1
+### `identity.email.verification-requested.v1`
 
 | Field | Type | Description |
-|-------|------|-------------|
-| `member_id` | string (UUID) | |
-| `paused_at` | int64 | Unix millis |
-| `remaining_days` | int32 | Days remaining |
-| `gym_id` | string (UUID) | |
-
-**Key:** `member_id`  
-**Consumers:** Notification Service, Analytics Service, Payment Service (prorated refund)
-
----
-
-### membership.resumed.v1
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `member_id` | string (UUID) | |
-| `new_end_date` | string | ISO date |
-| `gym_id` | string (UUID) | |
-
-**Key:** `member_id`  
-**Consumers:** Notification Service, Analytics Service
-
----
-
-### membership.expiring-soon.v1
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `member_id` | string (UUID) | |
-| `end_date` | string | ISO date |
-| `plan_type` | string | MONTHLY, YEARLY |
-| `gym_id` | string (UUID) | |
-
-**Key:** `member_id`  
-**Consumers:** Notification Service (send SMS + push reminder)
-
----
-
-### membership.expired.v1
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `member_id` | string (UUID) | |
-| `expired_at` | int64 | Unix millis |
-| `gym_id` | string (UUID) | |
-
-**Key:** `member_id`  
-**Consumers:** Notification Service, Analytics Service
-
----
-
-### payment.completed.v1
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `payment_id` | string (UUID) | |
-| `user_id` | string (UUID) | |
-| `type` | string | MEMBERSHIP, TRAINER_BOOKING |
-| `reference_id` | string (UUID) | plan_id or booking_id |
-| `amount_vnd` | int64 | Amount in VND |
-| `provider` | string | MOMO, ZALOPAY, VNPAY |
-| `gym_id` | string (UUID) | |
-| `discount_applied` | bool | |
-| `discount_percentage` | int32 | 0 if none |
-| `timestamp` | int64 | Unix millis |
+|---|---|---|
+| `user_id` | string | Opaque Identifier ID |
+| `email` | string | Verification recipient |
+| `full_name` | string | Display name |
+| `verification_url` | string | Secret frontend deep link containing the raw token |
+| `expires_at` | int64 | Unix epoch seconds |
+| `timestamp` | int64 | Unix epoch seconds |
 
 **Key:** `user_id`  
-**Consumers:** Member Service (activate membership), Trainer Service (confirm booking), Notification Service (receipt), Analytics Service (revenue)
+**Consumer:** Future Notification integration. Topic ACLs must be restricted, and consumers must never log `verification_url`.
 
----
+## Membership Events
 
-### payment.failed
+Member publishes lifecycle events from subscription state and purchased snapshots. It never reads live Plans data while creating these events.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `payment_id` | string (UUID) | |
-| `user_id` | string (UUID) | |
-| `type` | string | MEMBERSHIP, TRAINER_BOOKING |
-| `reference_id` | string (UUID) | plan_id or booking_id |
-| `gym_id` | string (UUID) | Gym location |
-| `reason` | string | Failure reason |
-| `timestamp` | int64 | Unix millis |
-
-**Key:** `user_id`  
-**Consumers:** Notification Service
+### `membership.activated.v1`
 
----
+| Field | Type | Source |
+|---|---|---|
+| `member_id` | string | Member profile |
+| `user_id` | string | Opaque Identifier reference |
+| `plan_type` | string | Subscription snapshot |
+| `start_date` | string | Activated subscription |
+| `end_date` | string | Activated subscription; empty for lifetime |
+| `gym_id` | string | Subscription snapshot |
+| `is_renewal` | bool | Lifecycle decision |
+| `timestamp` | int64 | Event time |
 
-### payment.refunded
+### Other membership lifecycle events
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `payment_id` | string (UUID) | |
-| `user_id` | string (UUID) | |
-| `type` | string | MEMBERSHIP, TRAINER_BOOKING |
-| `reference_id` | string (UUID) | plan_id or booking_id |
-| `gym_id` | string (UUID) | Gym location |
-| `refund_amount_vnd` | int64 | |
-| `reason` | string | |
-| `timestamp` | int64 | Unix millis |
+| Topic | Key fields | Source |
+|---|---|---|
+| `membership.paused.v1` | `member_id`, `paused_at`, `remaining_days`, `gym_id` | Subscription state |
+| `membership.resumed.v1` | `member_id`, `new_end_date`, `gym_id` | Subscription state |
+| `membership.expiring-soon.v1` | `member_id`, `end_date`, `plan_type`, `gym_id` | Subscription snapshot |
+| `membership.expired.v1` | `member_id`, `expired_at`, `gym_id` | Subscription state |
 
-**Key:** `user_id`  
-**Consumers:** Notification Service, Trainer Service (marks booking cancelled if booking_id)
+Notification and Analytics consumers remain deferred service-catalog behavior.
 
----
+## `payment.completed.v1`
 
-### workout.logged
+| Field | Type | Membership meaning |
+|---|---|---|
+| `payment_id` | string | Must match pending purchase |
+| `user_id` | string | Must match frozen purchase owner |
+| `type` | string | Must equal `MEMBERSHIP` |
+| `reference_id` | string | Member-owned `purchase_id`, never `plan_id` |
+| `amount_vnd` | int64 | Must equal frozen `price_vnd` |
+| `provider` | string | Must match initiated provider policy |
+| `gym_id` | string | Must match frozen purchase gym |
+| `discount_applied` | bool | False in G8 membership fixture |
+| `discount_percentage` | int32 | Zero in G8 membership fixture |
+| `timestamp` | int64 | Event time |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `user_id` | string (UUID) | |
-| `workout_id` | string (UUID) | |
-| `gym_id` | string (UUID) | |
-| `exercise_count` | int32 | Number of exercises |
-| `duration_minutes` | int32 | |
-| `logged_at` | int64 | Unix millis |
+**Key:** `user_id`
 
-**Key:** `user_id`  
-**Consumers:** Analytics Service
+For membership completion, Member:
 
----
+1. resolves `reference_id` as a pending `purchase_id`;
+2. loads and locks that record;
+3. validates purchase state, payment ID, type, user, gym, provider expectations, and amount;
+4. activates or renews using frozen type, duration, and price;
+5. marks the purchase completed and records event processing atomically;
+6. publishes lifecycle events through its outbox.
 
-### booking.requested
+Member never calls Plans while handling completion. Replays do not create duplicate subscriptions or events.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `booking_id` | string (UUID) | |
-| `customer_id` | string (UUID) | |
-| `trainer_id` | string (UUID) | |
-| `scheduled_at` | int64 | Unix millis |
-| `duration_minutes` | int32 | |
-| `gym_id` | string (UUID) | |
+Trainer-booking correlation by `booking_id` remains a future Payment/Trainer design and is not part of G8.
 
-**Key:** `booking_id`  
-**Consumers:** Notification Service (notify trainer)
+## Future Event Catalog
 
----
+These topic families remain deferred:
 
-### booking.accepted / booking.rejected
+| Domain | Future topics |
+|---|---|
+| Payment | `payment.failed`, `payment.refunded` |
+| Workout | `workout.logged` |
+| Trainer booking | `booking.requested`, `booking.accepted`, `booking.rejected`, `booking.completed`, `booking.cancelled`, `booking.expired`, `booking.auto-rejected` |
+| Check-in | `checkin.recorded.v1` |
+| Promotion | `promotion.published` |
+| Trainer lifecycle | `trainer.created`, `trainer.suspended` |
+| Analytics | `analytics.member-at-risk` |
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `booking_id` | string (UUID) | |
-| `customer_id` | string (UUID) | |
-| `trainer_id` | string (UUID) | |
-| `gym_id` | string (UUID) | |
-| `reason` | string | Only for rejected |
+### Deferred Check-in boundary
 
-**Key:** `booking_id`  
-**Consumers:** Notification Service (notify customer), Analytics Service (acceptance/rejection stats)
+A future `checkin.recorded.v1` may carry opaque `member_id`, `gym_id`, `device_id`, and `checked_in_at`. Location, kiosk, and QR-key lifecycle remain synchronous/admin concerns, not Kafka events.
 
----
+Plans owns canonical locations, but Plans V1 authorizes no Check-in caller. A later workload contract must be frozen before kiosk provisioning. Check-in must not call Member for location lookup. Future scan processing may still call Member `ValidateMembership` under a separate verified workload policy.
 
-### booking.completed
+## Delivery Semantics
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `booking_id` | string (UUID) | |
-| `trainer_id` | string (UUID) | |
-| `customer_id` | string (UUID) | |
-| `duration_minutes` | int32 | |
-| `gym_id` | string (UUID) | |
+Consumers use at-least-once processing:
 
-**Key:** `booking_id`  
-**Consumers:** Analytics Service (trainer utilization)
+1. initial attempt;
+2. retries after 2, 4, and 8 seconds;
+3. publish original key, framed value, and headers to `{topic}.DLQ` after the third retry fails;
+4. commit only after handler success or confirmed DLQ publication.
 
----
+Required UTF-8 headers are `event-type`, `source`, `timestamp`, `event-id`, and `traceparent`; `tracestate` is optional. `x-trace-id` is a read-only compatibility fallback. New producers emit no legacy `x-event-*` headers.
 
-### booking.cancelled
+Schema compatibility rules:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `booking_id` | string (UUID) | |
-| `customer_id` | string (UUID) | |
-| `trainer_id` | string (UUID) | |
-| `cancelled_by` | string | CUSTOMER, TRAINER, SYSTEM |
-| `reason` | string | Reason description |
-| `refund_percentage` | int32 | 0, 50, or 100 |
-| `gym_id` | string (UUID) | |
-
-**Key:** `booking_id`  
-**Consumers:** Notification Service (notify parties), Payment Service (trigger refund), Analytics Service (track cancellation metrics)
-
----
-
-### booking.expired
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `booking_id` | string (UUID) | |
-| `trainer_id` | string (UUID) | |
-| `slot` | string | Scheduled date time |
-
-**Key:** `booking_id`  
-**Consumers:** None (internally processed, logged for audits)
-
----
-
-### booking.auto-rejected
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `booking_id` | string (UUID) | |
-| `customer_id` | string (UUID) | |
-| `trainer_id` | string (UUID) | |
-| `gym_id` | string (UUID) | |
-
-**Key:** `booking_id`  
-**Consumers:** Notification Service (alert customer), Payment Service (triggers auto-refund)
-
----
-
-### checkin.recorded
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `member_id` | string (UUID) | |
-| `gym_id` | string (UUID) | |
-| `device_id` | string (UUID) | Authenticated display kiosk ID from the verified QR payload |
-| `checked_in_at` | int64 | Unix millis |
-
-**Key:** `member_id`  
-**Consumers:** Analytics Service (attendance stats, member_activity)
-
-Gym location, kiosk device, and QR root-key lifecycle changes are handled by authenticated admin RPCs, not Kafka events. During kiosk provisioning, Check-in synchronously verifies the canonical location through Member `GetGymLocation`.
-
----
-
-### promotion.published
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `promotion_id` | string (UUID) | |
-| `code` | string | Discount code |
-| `percentage` | int32 | Discount percentage |
-| `target_gym_ids` | repeated string | Gym IDs, empty = all |
-| `start_date` | string | ISO date |
-| `end_date` | string | ISO date |
-
-**Key:** `promotion_id`  
-**Consumers:** Notification Service (fan-out SMS/email)
-
----
-
-### trainer.created
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `trainer_id` | string (UUID) | |
-| `user_id` | string (UUID) | |
-| `gym_id` | string (UUID) | |
-| `display_name` | string | |
-
-**Key:** `trainer_id`  
-**Consumers:** None (internal lookup auditing)
-
----
-
-### trainer.suspended
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `trainer_id` | string (UUID) | |
-| `gym_id` | string (UUID) | |
-| `affected_booking_count` | int32 | Number of bookings cancelled |
-
-**Key:** `trainer_id`  
-**Consumers:** Notification Service, Payment Service
-
----
-
-### analytics.member-at-risk
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `member_id` | string (UUID) | |
-| `gym_id` | string (UUID) | |
-| `inactive_days` | int32 | Number of days inactive |
-| `risk_level` | string | AT_RISK, INACTIVE, GHOST |
-
-**Key:** `member_id`  
-**Consumers:** Notification Service (sends incentive discount / check-in prompt)
-
----
-
-## Kafka Configuration
-
-```yaml
-# Topic defaults
-num.partitions: 6
-replication.factor: 3
-min.insync.replicas: 2
-retention.ms: 604800000     # 7 days
-
-# Consumer groups
-consumer_groups:
-  - ms-gym-member-v1           # consumes: identity.user.registered.v1, payment.completed.v1, identity.user.suspended.v1
-  - ms-gym-notification-group  # consumes: all notification-triggering events (including risk warning and suspensions)
-  - ms-gym-analytics-group     # consumes: all analytics-relevant events (including checkins, bookings, workouts)
-  - ms-gym-trainer-group       # consumes: payment.completed.v1 (TRAINER_BOOKING), payment.refunded, user.suspended
-  - ms-gym-payment-group       # consumes: membership.paused.v1, booking.cancelled, booking.auto-rejected, trainer.suspended
-```
-
----
-
-## Schema Management
-
-```
-Schema Registry: Confluent Schema Registry (Protobuf mode)
-Proto files: `github.com/pploc/gym-proto`
-Generated Go stubs: tagged `github.com/pploc/proto-go`
-
-Kafka records use the domain entity key as their ordering key and a Schema
-Registry-framed concrete Protobuf value. There is no envelope wrapper. Subjects
-use TopicNameStrategy (`<topic>-value`), and production sets
-`auto.register.schemas=false`. Required UTF-8 headers are `event-type`, `source`,
-`timestamp` (decimal Unix epoch milliseconds), `event-id`, and `traceparent`;
-`tracestate` is optional. `x-trace-id` is a read-only compatibility fallback
-only; new producers emit no legacy `x-event-*` headers.
-
-Compatibility mode: BACKWARD
-  - New fields can be added (consumers ignore unknown fields)
-  - Existing fields cannot be removed or renamed
-  - Field numbers cannot be reused
-
-Consumers use at-least-once processing: initial attempt, then 2s, 4s, and 8s
-retries. After the third retry fails, the original key, framed value, and
-headers are published to `{topic}.DLQ` with diagnostic headers. Commit occurs
-only after handler success or confirmed DLQ publication.
-
-Buf CLI enforces breaking change detection in CI:
-  buf breaking --against 'develop'
-```
+- new fields may be added compatibly;
+- existing fields cannot be removed or renamed within a released version;
+- field numbers cannot be reused;
+- Buf breaking checks run against the configured released baseline.

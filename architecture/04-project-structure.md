@@ -1,303 +1,174 @@
 # Project Repository Structure
 
-This system uses a **monorepo layout** (`gym-chain/`) containing service implementations, local infrastructure deployment files, shared utility packages, and the Protobuf schema definitions.
+> **Roadmap status:** This document describes the sibling-repository workspace and pending G6–G8 additions. `ms-gym-plans` and `plans/v1` are targets, not completed files. Historical Phase 0–5 evidence remains unchanged.
 
----
+## Workspace Model
 
-## 1. Protobuf Directory Structure (`gym-proto/`)
+The project is a collection of sibling Git repositories under one local workspace, not a single deployable monorepo:
 
-The single source of truth for all API contracts and Kafka event schemas, located in the `gym-proto/` folder at the root of the repository.
-
+```text
+gapi/
+├── docs/                 # Architecture, service specifications, roadmap, evidence
+├── gym-proto/            # Protobuf, HTTP mappings, generated artifact publication
+├── common-go/            # Shared Go runtime packages
+├── common-java/          # Shared Java runtime packages
+├── gym-infra/            # Compose, Kong, Helm, reusable CI/CD
+├── ms-gym-identifier/    # Existing Go service
+├── ms-gym-member/        # Existing Java service
+└── ms-gym-plans/         # Planned G7 Java service; not created yet
 ```
+
+Payment, Workout, Trainer, Check-in, Notification, Analytics, and Promotion remain service-catalog entries. Their contracts and design docs do not imply that service repositories or deployments are active through G8.
+
+## Contract Repository
+
+`gym-proto` is the source of truth for service and Kafka contracts. Existing packages keep API package names such as `identity.v1` and `member.v1`. G6 plans a breaking repository release because location and plan catalog RPCs move out of `MemberService`.
+
+```text
 gym-proto/
-├── buf.yaml                        # Buf module config
-├── buf.gen.yaml                    # Code generation template (Go & Java stubs)
-└── proto/
-    ├── common/v1/
-    │   └── common.proto                # Shared types (Pagination, Money, Timestamps)
-    ├── identity/v1/
-    │   ├── identity.proto
-    │   └── identity_http.yaml          # gRPC-Gateway HTTP annotations
-    ├── member/v1/
-    │   ├── member.proto
-    │   └── member_http.yaml
-    ├── payment/v1/
-    │   ├── payment.proto
-    │   └── payment_http.yaml
-    ├── workout/v1/
-    │   ├── workout.proto
-    │   └── workout_http.yaml
-    ├── trainer/v1/
-    │   ├── trainer.proto
-    │   └── trainer_http.yaml
-    ├── checkin/v1/
-    │   ├── checkin.proto
-    │   └── checkin_http.yaml
-    ├── notification/v1/
-    │   └── notification.proto
-    ├── analytics/v1/
-    │   └── analytics.proto
-    ├── promotion/v1/
-    │   ├── promotion.proto
-    │   └── promotion_http.yaml
-    └── events/v1/                      # Kafka event schemas
-        ├── identity_events.proto
-        ├── membership_events.proto
-        ├── payment_events.proto
-        ├── workout_events.proto
-        ├── booking_events.proto
-        ├── checkin_events.proto
-        └── promotion_events.proto
+├── buf.yaml
+├── buf.gen.yaml
+├── proto/
+│   ├── identity/v1/
+│   │   ├── identity.proto
+│   │   └── identity_http.yaml
+│   ├── member/v1/
+│   │   ├── member.proto
+│   │   └── member_http.yaml
+│   ├── plans/v1/                 # Planned G6 addition
+│   │   ├── plans.proto
+│   │   └── plans_http.yaml
+│   ├── payment/v1/               # Deferred service catalog
+│   ├── workout/v1/               # Deferred service catalog
+│   ├── trainer/v1/               # Deferred service catalog
+│   ├── checkin/v1/               # Deferred service catalog
+│   ├── notification/v1/          # Deferred service catalog
+│   ├── analytics/v1/             # Deferred service catalog
+│   ├── promotion/v1/             # Deferred service catalog
+│   └── events/v1/
+├── scripts/
+└── contracts/
 ```
 
-**Distribution Strategy:**
-- `gym-proto` generates both languages for contract verification and publication.
-- **Go**: Services consume tagged `github.com/pploc/proto-go`; generated Go stubs are not copied into service repositories.
-- **Java**: Services consume tagged `com.gym.proto:gym-proto-java`; generated Java stubs are not copied into service repositories.
-- Local `make gen-go`, `make gen-java`, or `make proto` commands preview generated artifacts inside the contract repository only.
-- Existing `proto/*/v1/*_http.yaml` files are the HTTP mapping source of truth and are wired into `buf.gen.yaml` via `grpc_api_configuration`; unbound internal methods are not exposed.
+G6 target changes:
 
----
+- Add `plans.v1.PlansService` and public Plans HTTP mappings.
+- Remove plan listing and gym-location RPCs/messages from `member.v1.MemberService`.
+- Keep Plans `GetActiveGym` and `ResolvePurchasablePlan` workload-only and absent from HTTP mappings.
+- Prepare immutable release targets: Java `com.gym.proto:gym-proto-java:3.0.0` and Go `github.com/pploc/proto-go/v3`.
 
-## 2. Monorepo Structure (`github.com/gym-chain/backend`)
+Those release coordinates remain proposals until G6 validation and explicit publication approval. Existing v2 artifacts are never rewritten.
 
-Contains Protobuf files, service implementations, local infrastructure deployment files, and global scripts.
+## Active Service Repositories
 
-```
-gym-chain/
-├── gym-proto/                          # Protobuf schemas & configs
-│   ├── proto/                          # Protobuf definitions
-│   ├── buf.yaml                        # Buf module config
-│   └── buf.gen.yaml                    # Code generation template (Go & Java stubs)
-├── common-go/                          # Shared Go library
-│   ├── go.mod
-│   ├── grpc/interceptor/
-│   ├── kafka/
-│   ├── config/
-│   ├── errors/
-│   ├── logging/
-│   ├── health/
-│   ├── pagination/
-│   ├── crypto/
-│   └── testutil/
-│
-├── common-java/                        # Shared Java/Gradle library
-│   ├── build.gradle
-│   ├── gradlew
-│   └── src/main/java/com/gym/common/
-│       ├── grpc/
-│       ├── kafka/
-│       ├── error/
-│       ├── persistence/
-│       ├── pagination/
-│       └── config/
-│
-├── services/
-│   ├── ms-gym-identifier/               # Go
-│   │   ├── cmd/server/main.go
-│   │   ├── internal/
-│   │   │   ├── domain/
-│   │   │   ├── usecase/
-│   │   │   ├── adapter/
-│   │   │   └── config/
-│   │   ├── migrations/
-│   │   ├── Dockerfile
-│   │   ├── go.mod
-│   │   └── go.sum
-│   │
-│   ├── ms-gym-member/                 # Java Spring Boot
-│   │   ├── src/main/java/com/gym/member/
-│   │   │   ├── domain/
-│   │   │   ├── application/
-│   │   │   ├── adapter/
-│   │   │   └── config/
-│   │   ├── src/main/resources/
-│   │   │   ├── application.yml
-│   │   │   └── db/migration/          # Flyway
-│   │   ├── Dockerfile
-│   │   ├── build.gradle
-│   │   └── gradlew
-│   │
-│   ├── ms-gym-payment/                # Java Spring Boot
-│   │   ├── src/main/java/com/gym/payment/
-│   │   │   ├── domain/
-│   │   │   ├── application/
-│   │   │   ├── adapter/
-│   │   │   └── config/
-│   │   ├── Dockerfile
-│   │   ├── build.gradle
-│   │   └── gradlew
-│   │
-│   ├── ms-gym-workout/                # Go
-│   │   ├── cmd/server/main.go
-│   │   ├── internal/
-│   │   ├── migrations/
-│   │   ├── Dockerfile
-│   │   └── go.mod
-│   │
-│   ├── ms-gym-trainer/                # Java Spring Boot
-│   │   ├── src/main/java/com/gym/trainer/
-│   │   ├── Dockerfile
-│   │   ├── build.gradle
-│   │   └── gradlew
-│   │
-│   ├── ms-gym-checkin/                # Go
-│   │   ├── cmd/server/main.go
-│   │   ├── internal/
-│   │   ├── migrations/
-│   │   ├── Dockerfile
-│   │   └── go.mod
-│   │
-│   ├── ms-gym-notification/           # Go
-│   │   ├── cmd/server/main.go
-│   │   ├── internal/
-│   │   ├── Dockerfile
-│   │   └── go.mod
-│   │
-│   ├── ms-gym-analytics/              # Java Spring Boot
-│   │   ├── src/main/java/com/gym/analytics/
-│   │   ├── Dockerfile
-│   │   ├── build.gradle
-│   │   └── gradlew
-│   │
-│   └── ms-gym-promotion/              # Java Spring Boot
-│       ├── src/main/java/com/gym/promotion/
-│       ├── Dockerfile
-│       ├── build.gradle
-│       └── gradlew
-│
-├── infra/                              # Local infrastructure configs (Docker Compose)
-│   ├── local/
-│   │   └── init-dbs.sql
-│   ├── haproxy/
-│   │   └── haproxy.cfg
-│   └── kong/
-│       └── kong.yml
-│
-├── .github/
-│   └── workflows/
-│       ├── common-go-ci.yml            # Test + tag common-go
-│       ├── common-java-ci.yml          # Test + publish common-java
-│       ├── service-ci.yml              # Per-service build/test/deploy
-│       └── infra-validate.yml          # Config validation
-│
-├── docker-compose.yml                  # Local development (all services + deps)
-│   ├── docker-compose.deps.yml             # Dependencies only (DBs, Kafka, Redis)
-│   ├── Makefile                            # Local development commands
-│   └── docs/                               # Architecture Documentation
+### `ms-gym-identifier`
+
+```text
+ms-gym-identifier/
+├── cmd/server/
+├── internal/
+│   ├── domain/
+│   ├── usecase/
+│   │   └── port/            # Separate Member and planned Plans ports
+│   ├── adapter/
+│   │   ├── member/          # Membership-status workload client
+│   │   └── plans/           # Planned active-gym workload client
+│   └── config/
+├── migrations/
+├── Dockerfile
+└── go.mod
 ```
 
----
+Identifier uses PostgreSQL `identity_db`, Redis for token revocation, and Kafka for identity events. It owns no Plans or Member persistence.
 
-## Makefile (Local Dev Commands)
+### `ms-gym-member`
 
-```makefile
-.PHONY: test-go test-java docker-up docker-down docker-deps proto gen-go gen-java
-
-# Protobuf compilation
-proto: gen-go gen-java
-
-gen-go:
-	cd gym-proto && buf generate --template buf.gen.yaml --path proto/
-
-gen-java:
-	cd gym-proto && buf generate --template buf.gen.yaml --path proto/ -o ../common-java/
-
-# Testing
-test-go:
-	@for svc in identifier workout checkin notification; do \
-		echo "Testing ms-gym-$$svc..."; \
-		cd services/ms-gym-$$svc && go test -race ./... && cd ../..; \
-	done
-
-test-java:
-	@for svc in member payment trainer analytics promotion; do \
-		echo "Testing ms-gym-$$svc..."; \
-		cd services/ms-gym-$$svc && ./gradlew test && cd ../..; \
-	done
-
-test-all: test-go test-java
-
-# Docker Compose
-docker-deps:
-	docker compose -f docker-compose.deps.yml up -d
-
-docker-up:
-	docker compose up -d --build
-
-docker-down:
-	docker compose down -v
+```text
+ms-gym-member/
+├── src/main/java/com/gym/member/
+│   ├── domain/
+│   ├── application/
+│   ├── adapter/
+│   │   ├── in/grpc/
+│   │   └── out/
+│   │       ├── persistence/       # Profiles, subscriptions, pending purchases
+│   │       ├── plans/             # Planned ResolvePurchasablePlan client
+│   │       ├── payment/
+│   │       └── kafka/
+│   └── config/
+├── src/main/resources/
+│   └── db/migration/
+├── Dockerfile
+├── build.gradle
+└── gradlew
 ```
 
----
+The G8 target contains no Member-owned location or plan-catalog package. Member retains membership lifecycle, validation, events, and purchased-term snapshots.
 
-## docker-compose.deps.yml (Local Dependencies)
+### Planned `ms-gym-plans`
 
-```yaml
-version: "3.9"
-
-services:
-  postgres:
-    image: postgres:16
-    ports: ["5432:5432"]
-    environment:
-      POSTGRES_PASSWORD: postgres
-    volumes:
-      - ./infra/local/init-dbs.sql:/docker-entrypoint-initdb.d/init.sql
-      - pgdata:/var/lib/postgresql/data
-
-  cassandra:
-    image: cassandra:4.1
-    ports: ["9042:9042"]
-    volumes:
-      - cassdata:/var/lib/cassandra
-    environment:
-      CASSANDRA_CLUSTER_NAME: gym-cluster
-
-  yugabyte:
-    image: yugabytedb/yugabyte:2.20-latest
-    ports:
-      - "5433:5433"    # YSQL
-      - "9000:9000"    # Master UI
-    command: >
-      bin/yugabyted start
-      --daemon=false
-      --tserver_flags="ysql_enable_auth=false"
-
-  kafka:
-    image: confluentinc/cp-kafka:7.6.0
-    ports: ["9092:9092"]
-    environment:
-      KAFKA_NODE_ID: 1
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      CLUSTER_ID: gym-chain-local-001
-
-  schema-registry:
-    image: confluentinc/cp-schema-registry:7.6.0
-    ports: ["8081:8081"]
-    environment:
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
-    depends_on: [kafka]
-
-  redis:
-    image: redis:7-alpine
-    ports: ["6379:6379"]
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    ports: ["8090:8080"]
-    environment:
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
-      KAFKA_CLUSTERS_0_SCHEMAREGISTRY: http://schema-registry:8081
-    depends_on: [kafka, schema-registry]
-
-volumes:
-  pgdata:
-  cassdata:
+```text
+ms-gym-plans/
+├── src/main/java/com/gym/plans/
+│   ├── domain/
+│   ├── application/
+│   ├── adapter/
+│   │   ├── in/              # Public HTTP and native gRPC delegates
+│   │   └── out/persistence/ # JPA entities, repositories, Specifications
+│   └── config/
+├── src/main/resources/
+│   ├── application.yml
+│   └── db/migration/
+├── Dockerfile
+├── build.gradle
+└── gradlew
 ```
+
+Target stack: Java 26, Spring Boot 4, Flyway, Spring Data JPA, PostgreSQL `plans_db`, HTTP `8080`, native gRPC `50051`. Query filtering uses composed JPA `Specification` objects. Plans V1 has no Kafka, Schema Registry, outbox, cache, scheduler, or Payment packages.
+
+## Infrastructure Repository
+
+`gym-infra` is separate from service repositories:
+
+```text
+gym-infra/
+├── kong/
+│   ├── g5-compose.yml             # Historical pre-split fixture
+│   ├── g5-business-check.sh       # Historical evidence helper
+│   └── ...planned G8 additions...
+├── helm/
+│   └── gym-service/
+└── .github/workflows/
+```
+
+G5 files remain unchanged and truthful about the pre-split topology. G8 infrastructure is additive: a separate Plans database/service, caller-specific certificates, Plans public routes, and a phase-only fake Payment fixture.
+
+## Development Commands
+
+Commands run in the repository they target:
+
+```bash
+# Contracts
+gym-proto$ make proto
+gym-proto$ make gen-go
+gym-proto$ make gen-java
+
+# Existing active services
+ms-gym-identifier$ go test -race ./...
+ms-gym-member$ ./gradlew test
+
+# Planned after G7 creates the repository
+ms-gym-plans$ ./gradlew test
+```
+
+Workspace-level convenience targets may coordinate repositories, but they do not change repository ownership or imply that deferred service repositories exist.
+
+## Dependency Rules
+
+- Services consume tagged generated artifacts; generated stubs are not copied into service repositories.
+- Shared runtime behavior belongs in `common-go` or `common-java` only when more than one service needs it.
+- Service repositories own their domain and database migrations.
+- Cross-service IDs are opaque strings and never database foreign keys.
+- Public HTTP routes come from per-service HTTP configuration; internal workload RPCs remain unmapped.
+
+See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md), [Phase 7 Plans](../plans/foundation-first/07-ms-gym-plans.md), and the [Plans service specification](../services/10-ms-gym-plans.md).
