@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G6 contracts published (`v3.0.0`). G7 `ms-gym-plans` implements Spring HTTP + gRPC catalog ownership, pins `common-java:2.0.1`, and reuses `gym-infra` Java CI/Docker; Helm/G8 still open. G0–G5 remain historical evidence of the pre-split Member boundary. See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md), [Phase 7 Plans](../plans/foundation-first/07-ms-gym-plans.md), and [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
+> **Roadmap status:** G6 contracts published (`v3.0.0`). G7 `ms-gym-plans` implements Spring HTTP + gRPC catalog ownership, pins `common-java:2.0.2`, and reuses `gym-infra` Java CI/Docker; Helm/G8 still open. G0–G5 remain historical evidence of the pre-split Member boundary. See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md), [Phase 7 Plans](../plans/foundation-first/07-ms-gym-plans.md), and [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
 
 ## System Context
 

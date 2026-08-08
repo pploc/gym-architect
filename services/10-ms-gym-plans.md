@@ -1,6 +1,6 @@
 # Plans Service
 
-> **Tech:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL `plans_db` | **Ports:** 50051 gRPC / 8080 HTTP | **Deps:** `common-java:2.0.1`, `gym-proto-java:3.0.0`
+> **Tech:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL `plans_db` | **Ports:** 50051 gRPC / 8080 HTTP | **Deps:** `common-java:2.0.2`, `gym-proto-java:3.0.0`
 
 ## Responsibilities
 
@@ -78,7 +78,7 @@ service PlansService {
 
 ### HTTP routes
 
-Public HTTP is in-process Spring MVC on `8080`. Request and response bodies are generated `plans.v1` protobuf messages, bound as snake_case JSON through `common-java` `ProtobufJsonHttpMessageConverter` auto-config. There is no Go grpc-gateway sidecar and no handwritten HTTP DTO package.
+Public HTTP is in-process Spring MVC on `8080`. Request and response bodies are generated `plans.v1` protobuf messages, bound as camelCase JSON (`chainId`, `priceVnd`) through `common-java` `ProtobufJsonHttpMessageConverter` auto-config. There is no Go grpc-gateway sidecar and no handwritten HTTP DTO package.
 
 | Method | Path | Access |
 |---|---|---|
@@ -143,7 +143,7 @@ Stable `x-error-code` identifies the domain condition. Internal failures are red
 - Identifier and Member reach Plans gRPC `50051` through caller-specific NetworkPolicy and mTLS.
 - Plans has no Kafka or Schema Registry environment variables.
 - CI reuses `pploc/gym-infra` `java-ci.yml` (`./gradlew build`) and `docker-build.yml` for image push.
-- Pin `com.gym:common-java:2.0.1` and `com.gym.proto:gym-proto-java:3.0.0` from GitHub Packages; no `mavenLocal()`.
+- Pin `com.gym:common-java:2.0.2` and `com.gym.proto:gym-proto-java:3.0.0` from GitHub Packages; no `mavenLocal()`.
 
 ## Tests
 

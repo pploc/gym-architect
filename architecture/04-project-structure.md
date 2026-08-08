@@ -1,6 +1,6 @@
 # Project Repository Structure
 
-> **Roadmap status:** Sibling-repository workspace. G6 contracts published (`v3.0.0`). `ms-gym-plans` runs Spring HTTP + gRPC, pins `common-java:2.0.1`, and reuses `gym-infra` CI/Docker; G7 Helm and G8 integration still open. Historical Phase 0–5 evidence remains unchanged.
+> **Roadmap status:** Sibling-repository workspace. G6 contracts published (`v3.0.0`). `ms-gym-plans` runs Spring HTTP + gRPC, pins `common-java:2.0.2`, and reuses `gym-infra` CI/Docker; G7 Helm and G8 integration still open. Historical Phase 0–5 evidence remains unchanged.
 
 ## Workspace Model
 
@@ -167,7 +167,7 @@ Workspace-level convenience targets may coordinate repositories, but they do not
 ## Dependency Rules
 
 - Services consume tagged generated artifacts; generated stubs are not copied into service repositories.
-- Shared runtime behavior belongs in `common-go` or `common-java` only when more than one service needs it. Example: `common-java:2.0.1` ships servlet auto-config for protobuf JSON HTTP binding reused by Plans (and Member later); service-owned DTO type packages stay out of common libraries.
+- Shared runtime behavior belongs in `common-go` or `common-java` only when more than one service needs it. Example: `common-java:2.0.2` ships servlet auto-config for camelCase protobuf JSON HTTP binding reused by Plans (and Member later); service-owned DTO type packages stay out of common libraries.
 - Service repositories own their domain and database migrations.
 - Cross-service IDs are opaque strings and never database foreign keys.
 - Public HTTP routes come from per-service HTTP configuration; internal workload RPCs remain unmapped.
