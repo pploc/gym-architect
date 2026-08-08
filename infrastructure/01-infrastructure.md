@@ -227,7 +227,7 @@ Repositories run their own CI or reuse workflows from `gym-infra`:
 - `gym-proto`: Buf format/lint/breaking, generation, route checks, artifact publication after approval;
 - `ms-gym-identifier`: Go race tests and image build;
 - `ms-gym-member`: Gradle checks and image build;
-- planned `ms-gym-plans`: Gradle checks, empty-DB Flyway test, image build, and no-messaging check;
+- `ms-gym-plans`: reuses `gym-infra` `java-ci` (`./gradlew build`) and `docker-build`; empty-DB Flyway, Helm values/render, and no-messaging static checks remain G7 closeout items;
 - `gym-infra`: Compose/Kong validation and Helm rendering.
 
 Deferred catalog services are not part of the G8 build matrix.

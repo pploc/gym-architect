@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G6 contracts published (`v3.0.0`). G7 `ms-gym-plans` implements Spring HTTP + gRPC catalog ownership; G8 three-service integration still pending. G0–G5 remain historical evidence of the pre-split Member boundary. See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md), [Phase 7 Plans](../plans/foundation-first/07-ms-gym-plans.md), and [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
+> **Roadmap status:** G6 contracts published (`v3.0.0`). G7 `ms-gym-plans` implements Spring HTTP + gRPC catalog ownership, pins `common-java:2.0.1`, and reuses `gym-infra` Java CI/Docker; Helm/G8 still open. G0–G5 remain historical evidence of the pre-split Member boundary. See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md), [Phase 7 Plans](../plans/foundation-first/07-ms-gym-plans.md), and [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
 
 ## System Context
 
@@ -21,7 +21,7 @@ The catalog contains ten services. G6–G8 actively cover Identifier, Member, an
 |---|---|---|---|---|---|
 | 1 | Identifier | Go + PostgreSQL | `identity_db` | Users, credentials, refresh tokens, JWTs, selected-gym token issuance | Active |
 | 2 | Member | Java 26 + Spring Boot 4 | `member_db` | Profiles, subscriptions, purchase orchestration, pending purchases, lifecycle, validation, membership events | Active |
-| 3 | Plans | Java 26 + Spring Boot 4 | `plans_db` | Gym locations, gym-specific membership plans, availability, duration, VND list price | G7 in progress (service HTTP/gRPC live; CI/Helm/G8 still open) |
+| 3 | Plans | Java 26 + Spring Boot 4 | `plans_db` | Gym locations, gym-specific membership plans, availability, duration, VND list price | G7 in progress (HTTP/gRPC + CI/image live; Helm/G8 still open) |
 | 4 | Payment | Java + PostgreSQL | `payment_db` | Payments, provider webhooks, refunds | Deferred; G8 uses a fake fixture only |
 | 5 | Workout | Go + Cassandra | `workout_ks` | Workout logs, templates, personal records | Deferred |
 | 6 | Trainer | Java + PostgreSQL | `trainer_db` | Trainer profiles, availability, bookings | Deferred |
