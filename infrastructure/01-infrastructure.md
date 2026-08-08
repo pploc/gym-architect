@@ -63,7 +63,7 @@ services:
 
 Plans management and read routes use the authentication/authorization matrix frozen in [Phase 6](../plans/foundation-first/06-plans-contracts.md). `GetActiveGym` and `ResolvePurchasablePlan` have no HTTP mapping and no Kong route.
 
-Member must not be given an external route until a real service-local HTTP gateway exists. G8 may prove Member purchase behavior over an internal/test path without routing HTTP to raw native gRPC.
+Member must not be given an external route until a real service-local HTTP adapter exists (Spring MVC for Java services, matching Plans). G8 may prove Member purchase behavior over an internal/test path without routing HTTP to raw native gRPC.
 
 Kong must strip client-provided copies of `x-user-id`, `x-user-role`, `x-gym-id`, `x-membership-status`, and tracing trust headers before injecting validated claims. Workload calls never forward those headers as credentials.
 

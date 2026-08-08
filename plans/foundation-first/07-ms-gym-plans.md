@@ -21,7 +21,7 @@ Use the smallest established Java service stack:
 - Spring Data JPA and `JpaSpecificationExecutor`;
 - PostgreSQL `plans_db` and Flyway;
 - native gRPC on `50051` with required mTLS;
-- service-local HTTP/JSON on `8080` for mapped public methods;
+- in-process Spring MVC HTTP/JSON on `8080` for mapped public methods (Kong target; no Go grpc-gateway sidecar);
 - validation and Actuator health;
 - existing reusable Java CI, Docker, and Helm patterns.
 

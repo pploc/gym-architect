@@ -137,7 +137,7 @@ Stable `x-error-code` identifies the domain condition. Internal failures are red
 ## Deployment
 
 - `plans_db` is isolated from Identifier and Member databases.
-- Kong reaches Plans HTTP `8080` only.
+- Kong reaches Plans Spring HTTP `8080` only (same JVM as gRPC; not a separate gateway process).
 - Identifier and Member reach Plans gRPC `50051` through caller-specific NetworkPolicy and mTLS.
 - Plans has no Kafka or Schema Registry environment variables.
 

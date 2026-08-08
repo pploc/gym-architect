@@ -22,8 +22,8 @@ Only Identifier, Member, and Plans are active service scope. Other service docum
 
 - G0–G4: historical foundation gates completed with evidence retained under `docs/evidence/foundation-first`.
 - G5: passed Identifier-led Kong/Identifier/Member E2E through `gym-infra/kong/run-g5.sh`.
-- G6: pending Plans and revised Member contract release.
-- G7: pending `ms-gym-plans` implementation.
+- G6: Plans/Member/Payment contracts published as `v3.0.0` / `gym-proto-java:3.0.0` / `proto-go/v3@v3.0.0`.
+- G7: `ms-gym-plans` implements domain, persistence, Spring HTTP public routes, and mTLS gRPC; CI/Helm/image evidence still open.
 - G8: pending clean three-service integration.
 
 G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 changes that boundary, so revised Member behavior requires new G8 evidence. Member external HTTP remains unexposed until a real service-local gateway exists.
