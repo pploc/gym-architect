@@ -2,7 +2,7 @@
 
 ## Authoritative execution plan
 
-Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G5 are completed foundation history. Current actionable work is limited to Identifier, Member, and Plans through Phases 6–8.
+Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G8 foundation for Identifier, Member, and Plans is complete (owner approval pending on G8). Deferred services stay catalog-only until a later roadmap gate.
 
 ## Active services
 
@@ -46,7 +46,7 @@ flowchart LR
     MB -->|trusted purchasable terms| PL
 ```
 
-Member keeps `PurchaseMembership`, but Payment implementation remains deferred. Phase 8 verifies Member’s outbound Payment port with a mock or fake.
+Member keeps `PurchaseMembership`; production Payment remains deferred. G8 proved the outbound Payment port with `gym-infra/kong/fixtures/fake-payment`.
 
 ## Change index
 

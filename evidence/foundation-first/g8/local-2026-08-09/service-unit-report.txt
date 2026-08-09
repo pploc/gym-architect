@@ -1,0 +1,21 @@
+# Unit/service verification (Phase 8 Parts A/B)
+
+## Member
+Command:
+  cd ms-gym-member && ./gradlew startEnv && ./gradlew clean check && ./gradlew stopEnv
+Result: PASS (pre-G8-topology; Part A rewrite green on develop worktree)
+
+Key schema (Flyway V9):
+- drops membership_plans / gym_locations from member schema
+- subscriptions: plan_type_snapshot, duration_days_snapshot, price_vnd_snapshot
+- pending_purchases table
+
+## Identifier
+Command:
+  cd ms-gym-identifier && go test -race ./...
+Result: PASS (PlansClient split; SelectGym Plans-first fail-closed)
+
+## Plans (no intentional G8 change)
+Command:
+  cd ms-gym-plans && ./gradlew clean check
+Result: green on G7 HEAD ecbccfac (see g7 evidence)

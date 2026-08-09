@@ -1,6 +1,6 @@
 # Business Flows
 
-> **Scope:** Authentication and the pending G8 Identifier/Member/Plans flows are active roadmap targets. Payment in G8 is a fake integration fixture. Check-in, Workout, Trainer, Notification, Analytics, Promotion, and production Payment flows remain deferred catalog designs.
+> **Scope:** Authentication and G8 Identifier/Member/Plans flows are implemented and proven by `run-g8.sh`. Payment in G8 is a fake integration fixture only. Check-in, Workout, Trainer, Notification, Analytics, Promotion, and production Payment remain deferred catalog designs.
 
 ## 1. Gym-Neutral Authentication
 
@@ -26,7 +26,7 @@ Registration and email verification also remain gym-neutral. `identity.user.regi
 
 Refresh validates a hashed refresh token, rotates it, revokes the old record, and issues another gym-neutral access token.
 
-## 2. Pending Selected-Gym Token
+## 2. Selected-Gym Token
 
 ```mermaid
 sequenceDiagram
@@ -57,7 +57,7 @@ sequenceDiagram
 
 Plans and Member are independent workload clients with separate targets, deadlines, certificates, and trust decisions. Identifier never uses end-user headers as workload credentials.
 
-## 3. Registration and Pending G8 Membership Purchase
+## 3. Registration and Membership Purchase
 
 ```mermaid
 sequenceDiagram

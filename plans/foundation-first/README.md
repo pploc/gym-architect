@@ -23,10 +23,10 @@ Only Identifier, Member, and Plans are active service scope. Other service docum
 - G0–G4: historical foundation gates completed with evidence retained under `docs/evidence/foundation-first`.
 - G5: passed Identifier-led Kong/Identifier/Member E2E through `gym-infra/kong/run-g5.sh`.
 - G6: Plans/Member/Payment contracts published as `v3.0.0` / `gym-proto-java:3.0.0` / `proto-go/v3@v3.0.0`.
-- G7: `ms-gym-plans` implements domain, persistence, Spring HTTP public routes (camelCase proto JSON via `common-java:2.0.2`), and mTLS gRPC; `gym-infra` Java CI/Docker wired. Helm values/render and full G7 closeout evidence still open.
-- G8: pending clean three-service integration.
+- G7: passed. Plans owns locations/catalog; evidence under `docs/evidence/foundation-first/g7/local-2026-08-09/` (reverified 2026-08-09 on current develop HEADs: plans `ecbccfac`, gym-infra `96dd2298`, docs `69847db4`; 70 tests, Helm/NetworkPolicy render pass).
+- G8: passed. Identifier + Member + Plans clean-boundary E2E via `gym-infra/kong/run-g8.sh` (`RUN_EXIT:0`); evidence under `docs/evidence/foundation-first/g8/local-2026-08-09/`. Owner approval remains pending.
 
-G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 changes that boundary, so revised Member behavior requires new G8 evidence. Member external HTTP remains unexposed until a real service-local gateway exists.
+G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 revised that boundary; G8 evidence supersedes G5 for location validation and catalog ownership. Member external HTTP remains intentionally unexposed.
 
 No customer or production data exists. Phases 6–8 use a coordinated contract and schema reset. Do not add migration, backfill, compatibility forwarding, dual-write, or rollback machinery for disposable pre-production data.
 
@@ -87,9 +87,9 @@ Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-ne
 
 ## Active-scope freeze
 
-Until G8, do not start implementation phases for Payment, Check-in, Workout, Trainer, Promotion, Notification, or Analytics. Their docs may be corrected only to preserve Identifier/Member/Plans boundaries.
+G8 closed Identifier/Member/Plans. Do not start implementation phases for Payment, Check-in, Workout, Trainer, Promotion, Notification, or Analytics until a later roadmap gate. Their docs may be corrected only to preserve Identifier/Member/Plans boundaries.
 
-Allowed repositories in Phases 6–8:
+Allowed repositories for Phases 6–8 (historical scope list):
 
 - `gym-proto`;
 - `ms-gym-plans`;

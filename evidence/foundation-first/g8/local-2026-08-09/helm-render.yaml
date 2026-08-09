@@ -1,0 +1,345 @@
+---
+# Source: gym-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ms-gym-plans-network-policy
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ms-gym-plans
+      app.kubernetes.io/instance: ms-gym-plans
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes: istio-system
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: kong
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ms-gym-gateway
+      - podSelector:
+          matchLabels:
+            istio: ingressgateway
+      ports:
+      - port: 8080
+        protocol: TCP
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ms-gym-identifier
+      ports:
+      - port: 50051
+        protocol: TCP
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ms-gym-member
+      ports:
+      - port: 50051
+        protocol: TCP
+
+---
+# Source: gym-service/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ms-gym-plans
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ms-gym-plans
+      app.kubernetes.io/instance: ms-gym-plans
+
+---
+# Source: gym-service/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ms-gym-plans
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: false
+
+---
+# Source: gym-service/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ms-gym-plans
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+data:
+  SERVICE_NAME: "ms-gym-plans"
+  LOG_LEVEL: "INFO"
+
+---
+# Source: gym-service/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: ms-gym-plans
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  type: ClusterIP
+  ports:
+    - port: 50051
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
+    - port: 8080
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: metrics
+      protocol: TCP
+      name: metrics
+  selector:
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+
+---
+# Source: gym-service/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ms-gym-plans
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ms-gym-plans
+      app.kubernetes.io/instance: ms-gym-plans
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
+      labels:
+        app.kubernetes.io/name: ms-gym-plans
+        app.kubernetes.io/instance: ms-gym-plans
+    spec:
+      serviceAccountName: ms-gym-plans
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 65532
+        runAsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: gym-service
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: false
+          image: "ghcr.io/pploc/ms-gym-plans:develop"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 50051
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 0
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          envFrom:
+            - configMapRef:
+                name: gym-central-config
+                optional: true
+            - configMapRef:
+                name: ms-gym-plans
+                optional: true
+          env:
+            - name: ENV
+              value: local
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres:5432/plans_db
+            - name: SPRING_DATASOURCE_USERNAME
+              value: postgres
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: db-password
+                  name: ms-gym-plans-secrets
+                  optional: true
+            - name: GRPC_SERVER_PORT
+              value: "50051"
+            - name: PLANS_GRPC_TLS_ENABLED
+              value: "true"
+            - name: PLANS_GRPC_ALLOW_PLAINTEXT
+              value: "false"
+            - name: PLANS_GRPC_SERVER_CERT
+              value: /var/run/certs/tls.crt
+            - name: PLANS_GRPC_SERVER_KEY
+              value: /var/run/certs/tls.key
+            - name: PLANS_GRPC_CLIENT_CA
+              value: /var/run/certs/ca.crt
+          volumeMounts:
+            - mountPath: /var/run/certs
+              name: grpc-mtls
+              readOnly: true
+      volumes:
+        - name: grpc-mtls
+          secret:
+            secretName: ms-gym-plans-grpc-mtls
+
+---
+# Source: gym-service/templates/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ms-gym-plans
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ms-gym-plans
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
+
+---
+# Source: gym-service/templates/istio-destinationrule.yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: ms-gym-plans
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  host: ms-gym-plans.gym-system.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+
+---
+# Source: gym-service/templates/istio-peerauthentication.yaml
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: ms-gym-plans
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ms-gym-plans
+      app.kubernetes.io/instance: ms-gym-plans
+  mtls:
+    mode: STRICT
+
+---
+# Source: gym-service/templates/istio-virtualservice.yaml
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: ms-gym-plans
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  hosts:
+    - "plans.gym.local"
+  gateways:
+    - gym-gateway
+  http:
+    - match:
+        - uri:
+            prefix: "/"
+      route:
+        - destination:
+            host: ms-gym-plans.gym-system.svc.cluster.local
+            port:
+              number: 8080

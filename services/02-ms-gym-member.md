@@ -2,7 +2,7 @@
 
 > **Tech:** Java 26 + Spring Boot 4 | **DB:** PostgreSQL `member_db` | **Ports:** 50051 native gRPC / 8080 HTTP when a service-local gateway exists
 >
-> **Roadmap status:** This is the pending G8 Member boundary. Current code and historical G4/G5 evidence still contain pre-split location/catalog behavior. See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md) and [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
+> **Roadmap status:** G8 complete. No location/catalog ownership; pending purchases + subscription snapshots; Plans `ResolvePurchasablePlan` + fake Payment completion. Historical G4/G5 evidence is pre-split. G8 evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/`.
 
 ## Responsibilities
 
@@ -199,7 +199,7 @@ service MemberService {
 }
 ```
 
-G6 removes `GetPlans` and all gym-location management/lookup RPCs from Member. Their presence in current pre-split Protobuf or code is pending implementation work, not target ownership.
+G6 removed `GetPlans` and gym-location management/lookup RPCs from Member. G8 Member code and schema match that boundary.
 
 `GetMembershipStatusByUserId` receives both `user_id` and `gym_id`. It returns `NONE` for a known user without a subscription at that gym. Identifier does not guess after an availability failure.
 

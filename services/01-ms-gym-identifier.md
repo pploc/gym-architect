@@ -2,7 +2,7 @@
 
 > **Tech:** Go | **DB:** PostgreSQL `identity_db` | **Ports:** 50051 native gRPC / 8080 HTTP
 >
-> **Roadmap status:** Core identity behavior exists. Separate Plans and Member workload clients are the pending G8 target. Historical G5 evidence records the earlier Member-only gym-validation path. See [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
+> **Roadmap status:** G8 complete. Independent `PlansClient` (`GetActiveGym`) and `MemberClient` (membership only); `SelectGym` is Plans-first then Member, fail-closed. Historical G5 evidence records the earlier Member-only gym-validation path. G8 evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/`.
 
 ## Responsibilities
 
@@ -213,4 +213,4 @@ internal/
 └── config/
 ```
 
-Only the split-client additions are pending G8. This document does not claim that current code or released contracts already contain them.
+Split-client path is implemented and covered by unit tests plus G8 E2E (`run-g8.sh`).

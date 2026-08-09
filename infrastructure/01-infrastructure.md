@@ -1,8 +1,8 @@
 # Infrastructure Architecture
 
-> **Roadmap status:** This document describes pending additive G8 infrastructure. Existing G5 compose files and evidence remain historical pre-split artifacts. No topology below is claimed as deployed until G8 implementation and checks complete.
+> **Roadmap status:** G8 additive topology implemented and proven by `gym-infra/kong/run-g8.sh` (`RUN_EXIT:0`). Evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/`. G5 compose files and evidence remain historical pre-split artifacts.
 
-## Pending G8 Topology
+## G8 Topology
 
 ```mermaid
 flowchart TB
@@ -40,7 +40,7 @@ Plans V1 has no Kafka, Schema Registry, Redis, outbox, scheduler, or Payment dep
 
 Only Plans owns catalog tables. Member stores opaque `gym_id` and `plan_id` plus plan type, duration, and VND price snapshots. Identifier owns no Member or Plans table. No cross-service database FK or join is allowed.
 
-Historical G5 fixtures may use the database name `gym_member`; that evidence remains unchanged. New G8 target configuration uses `member_db`.
+Local G5 and G8 compose both use PostgreSQL database name `gym_member` for Member (ownership rules match target `member_db` naming in architecture docs). Catalog tables live only in `plans_db`.
 
 ## Kong Routes
 

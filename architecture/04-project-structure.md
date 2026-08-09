@@ -1,6 +1,6 @@
 # Project Repository Structure
 
-> **Roadmap status:** Sibling-repository workspace. G6 contracts published (`v3.0.0`). `ms-gym-plans` runs Spring HTTP + gRPC, pins `common-java:2.0.2`, and reuses `gym-infra` CI/Docker; G7 Helm and G8 integration still open. Historical Phase 0–5 evidence remains unchanged.
+> **Roadmap status:** Sibling-repository workspace. G6–G8 complete for Identifier/Member/Plans. `ms-gym-plans` pins `common-java:2.0.2`; additive G8 topology under `gym-infra/kong/g8-*`. Historical Phase 0–5 evidence remains unchanged.
 
 ## Workspace Model
 
@@ -35,7 +35,7 @@ gym-proto/
 │   ├── member/v1/
 │   │   ├── member.proto
 │   │   └── member_http.yaml
-│   ├── plans/v1/                 # Planned G6 addition
+│   ├── plans/v1/                 # G6+ Plans contracts
 │   │   ├── plans.proto
 │   │   └── plans_http.yaml
 │   ├── payment/v1/               # Deferred service catalog
@@ -103,7 +103,7 @@ ms-gym-member/
 └── gradlew
 ```
 
-The G8 target contains no Member-owned location or plan-catalog package. Member retains membership lifecycle, validation, events, and purchased-term snapshots.
+Member has no location or plan-catalog package after G8. Member retains membership lifecycle, validation, events, and purchased-term snapshots.
 
 ### `ms-gym-plans`
 
@@ -137,13 +137,18 @@ gym-infra/
 ├── kong/
 │   ├── g5-compose.yml             # Historical pre-split fixture
 │   ├── g5-business-check.sh       # Historical evidence helper
-│   └── ...planned G8 additions...
+│   ├── g8-compose.yml             # Three-service topology
+│   ├── g8-kong.yml
+│   ├── g8-business-check.sh
+│   ├── run-g8.sh
+│   ├── generate-g8-certs.sh
+│   └── fixtures/fake-payment/     # Phase-only Payment fixture
 ├── helm/
 │   └── gym-service/
 └── .github/workflows/
 ```
 
-G5 files remain unchanged and truthful about the pre-split topology. G8 infrastructure is additive: a separate Plans database/service, caller-specific certificates, Plans public routes, and a phase-only fake Payment fixture.
+G5 files remain unchanged and truthful about the pre-split topology. G8 infrastructure is additive: separate Plans database/service, caller-specific certificates, Plans public routes, and a phase-only fake Payment fixture.
 
 ## Development Commands
 

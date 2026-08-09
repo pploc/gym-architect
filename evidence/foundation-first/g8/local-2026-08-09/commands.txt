@@ -1,0 +1,21 @@
+# Commands executed for G8 gate
+
+# Topology + E2E (authoritative for G8)
+cd /home/phucl/Workplace/gapi/gym-infra
+./kong/run-g8.sh
+# observed: RUN_EXIT:0
+# observed: G8 three-service business checks passed. Member public HTTP remains intentionally unexposed.
+
+# Supporting service gates (Parts A/B; run earlier same phase)
+cd /home/phucl/Workplace/gapi/ms-gym-member
+./gradlew startEnv && ./gradlew clean check && ./gradlew stopEnv
+
+cd /home/phucl/Workplace/gapi/ms-gym-identifier
+go test -race ./...
+
+# Plans unchanged from G7
+# see docs/evidence/foundation-first/g7/local-2026-08-09/
+
+# Helm/NetworkPolicy (Plans values; reused from G7 render)
+# gym-infra/helm/gym-service/examples/ms-gym-plans-values.yaml
+# copies: helm-render.yaml, networkpolicy.yaml in this evidence dir

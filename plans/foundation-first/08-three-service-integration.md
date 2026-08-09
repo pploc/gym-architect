@@ -1,5 +1,7 @@
 # Phase 8 — Identifier, Member, and Plans Integration
 
+> **Status:** G8 technical pass. Evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/` (`./kong/run-g8.sh` → `RUN_EXIT:0`). Owner approval pending.
+
 ## Objective
 
 Reach G8 by removing location/catalog ownership from Member, splitting Identifier's downstream clients, and proving the clean three-service boundary through Kong, workload mTLS, isolated databases, and membership purchase E2E.

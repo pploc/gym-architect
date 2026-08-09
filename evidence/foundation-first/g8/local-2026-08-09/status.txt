@@ -1,0 +1,46 @@
+recorded_at=2026-08-09T15:39:40+07:00
+runner=./kong/run-g8.sh
+business_check=./kong/g8-business-check.sh
+result=PASS
+RUN_EXIT=0
+
+## Git HEADs (committed)
+gym-infra 96dd229888cedab94f1b71a7348c486bed8ee799 (96dd229)
+ms-gym-identifier 9aca82f129253e439c408e0c69802676e149aa52 (9aca82f)
+ms-gym-member 67e8b38e280c36f43eeffa291a99a37807cd9564 (67e8b38)
+ms-gym-plans ecbccfac2d4bcdbd61153cd16581879798902c8a (ecbccfa)
+docs 69847db49d349ce264b496a8807bfbadaae51ff9 (69847db)
+gym-proto d340673e77635789d975acbe823c1011c72428c9 (d340673)
+common-java 9bb574a64ef91ddade38c455adc079c6b4d8bb0f (9bb574a)
+common-go 507055a423987c46acc506049bce0970b52edf4d (507055a)
+
+## Working trees at evidence capture
+gym-infra dirty_paths=7
+ms-gym-identifier dirty_paths=12
+ms-gym-member dirty_paths=49
+ms-gym-plans dirty_paths=0
+docs dirty_paths=5
+
+## Artifact pins
+gym-proto-java=3.0.0
+proto-go/v3=v3.0.0
+proto-go(events path)=v1.2.1
+common-java=2.0.2
+common-go=v0.3.2
+
+## Local G8 images (no registry digest; local build IDs)
+gym-g8-ms-gym-member:latest id=07b56036974c size=738MB
+gym-g8-ms-gym-plans:latest id=8fd54127459a size=737MB
+gym-g8-fake-payment:latest id=cf50f6556b3a size=196MB
+gym-g8-ms-gym-identifier:latest id=069d25386ee4 size=92.9MB
+gym-g8-mock-upstream:latest id=9415b66d5766 size=27.9MB
+
+## Topology files
+kong/g8-compose.yml sha256=4905ef70518644a94892defab25ec66e8a78cad5fe9c2213be4330204e678b39
+kong/g8-kong.yml sha256=7775677acf99690b311d2af94aba4920974e4d08e747001b1516850ccd98df87
+kong/g8-business-check.sh sha256=f50e0750d0670eead1b47e2a9158c224655d85addde837a2f38082038161229c
+kong/run-g8.sh sha256=ebe59b68dc7ebb4ac8fed68ce2fd9a2686b461e8f06683224323d7c167cb01fe
+kong/generate-g8-certs.sh sha256=1783f2c3f763439a7f1ef7803ce3c3a381cf07bd40f186410b3c471c6043673c
+kong/fixtures/fake-payment/main.go sha256=9b81b4427fc269963d5f0fd3f2274a4e782d24ce95e273c89108c648be06c8f2
+kong/fixtures/fake-payment/Dockerfile sha256=fd4de35e97ddf10123ae78ce1a9725a18aaa18ee0383658a946bfc3a924b88fd
+owner_approval=pending

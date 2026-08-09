@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G6 contracts published (`v3.0.0`). G7 `ms-gym-plans` implements Spring HTTP + gRPC catalog ownership, pins `common-java:2.0.2`, and reuses `gym-infra` Java CI/Docker; Helm/G8 still open. G0–G5 remain historical evidence of the pre-split Member boundary. See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md), [Phase 7 Plans](../plans/foundation-first/07-ms-gym-plans.md), and [Phase 8 integration](../plans/foundation-first/08-three-service-integration.md).
+> **Roadmap status:** G6–G8 complete for Identifier/Member/Plans. Contracts `v3.0.0`; Plans owns catalog (G7); three-service integration proven by `run-g8.sh` (G8). G0–G5 remain historical pre-split evidence. See [Phase 8](../plans/foundation-first/08-three-service-integration.md) and `docs/evidence/foundation-first/g8/local-2026-08-09/`.
 
 ## System Context
 
@@ -21,7 +21,7 @@ The catalog contains ten services. G6–G8 actively cover Identifier, Member, an
 |---|---|---|---|---|---|
 | 1 | Identifier | Go + PostgreSQL | `identity_db` | Users, credentials, refresh tokens, JWTs, selected-gym token issuance | Active |
 | 2 | Member | Java 26 + Spring Boot 4 | `member_db` | Profiles, subscriptions, purchase orchestration, pending purchases, lifecycle, validation, membership events | Active |
-| 3 | Plans | Java 26 + Spring Boot 4 | `plans_db` | Gym locations, gym-specific membership plans, availability, duration, VND list price | G7 in progress (HTTP/gRPC + CI/image live; Helm/G8 still open) |
+| 3 | Plans | Java 26 + Spring Boot 4 | `plans_db` | Gym locations, gym-specific membership plans, availability, duration, VND list price | Active (G7 service + G8 integration) |
 | 4 | Payment | Java + PostgreSQL | `payment_db` | Payments, provider webhooks, refunds | Deferred; G8 uses a fake fixture only |
 | 5 | Workout | Go + Cassandra | `workout_ks` | Workout logs, templates, personal records | Deferred |
 | 6 | Trainer | Java + PostgreSQL | `trainer_db` | Trainer profiles, availability, bookings | Deferred |
@@ -30,7 +30,7 @@ The catalog contains ten services. G6–G8 actively cover Identifier, Member, an
 | 9 | Analytics | Java + YugabyteDB | `analytics_db` | Attendance, revenue, and trend projections | Deferred |
 | 10 | Promotion | Java + PostgreSQL | `promotion_db` | Promotion codes and reservations | Deferred |
 
-## Pending G8 Topology
+## G8 Topology
 
 ```mermaid
 flowchart LR
@@ -90,7 +90,7 @@ Identifier owns no Member or Plans table and stores no cross-service gym foreign
 
 ## Communication Patterns
 
-| Pattern | Pending G6–G8 use |
+| Pattern | G6–G8 use |
 |---|---|
 | Public HTTP/JSON | Client to Kong to service-local Spring HTTP on `8080` (Java) or Go HTTP gateway (Identifier) |
 | Native gRPC with mTLS | Identifier to Plans, Identifier to Member, and Member to Plans on `50051` |
@@ -110,7 +110,7 @@ Check-in remains deferred. Plans is the canonical location owner and Member is t
 
 Protobuf definitions and per-service HTTP configuration are the contract source of truth. Public methods receive HTTP mappings and route through Kong to service-local HTTP listeners. Workload-only methods have no HTTP mapping and are reachable only through authorized mTLS gRPC channels.
 
-The Member-to-Plans relocation is a source-breaking contract change planned for the G6 release. Until that release and G7–G8 implementation are complete, current repositories may still contain pre-split Member RPCs and persistence. Current-facing documentation describes the target; historical G0–G5 handoffs record the implementation that was previously proved.
+The Member-to-Plans relocation shipped as G6 contracts and G7–G8 implementation. Historical G0–G5 handoffs remain truthful for the pre-split boundary; G8 evidence is the revised-boundary proof.
 
 ## Key Decisions
 
