@@ -44,32 +44,33 @@ sequenceDiagram
     participant FP as G8 Fake Payment
     participant KF as Kafka
 
-    C->>MB: PurchaseMembership(plan_id, provider, discount_code?)
+    C->>MB: PurchaseMembership(plan_id, provider, idempotency_key, discount_code?)
     MB->>MB: Resolve trusted user, member, selected gym
     MB->>MB: Reject nonblank discount_code
     MB->>PL: ResolvePurchasablePlan(plan_id, selected_gym_id) over mTLS
     PL-->>MB: plan_id, gym_id, type, duration_days, price_vnd
-    MB->>DB: Persist PENDING purchase with frozen terms
+    MB->>DB: Create or load PENDING purchase by (user_id, idempotency_key)
+    Note over MB,DB: Commit before Payment; stable purchase_id
     MB->>FP: InitiatePayment(reference_id=purchase_id)
-    FP-->>MB: payment_id, payment_url
+    FP-->>MB: payment_id, payment_url (same intent on retry)
     MB->>DB: Attach payment_id
     MB-->>C: payment_id, payment_url
     FP->>KF: payment.completed.v1 reference_id=purchase_id
     KF-->>MB: Completion event
-    MB->>DB: Lock purchase and validate event
-    MB->>DB: Activate from frozen terms; mark completed; record event
+    MB->>DB: Claim event + activate in one TX
+    MB->>DB: Activate from frozen terms; mark completed
 ```
 
 Rules:
 
-1. Client supplies only `plan_id`, provider, and wire-compatible optional `discount_code`.
+1. Client supplies `plan_id`, provider, required `idempotency_key`, and optional `discount_code`.
 2. Nonblank discount codes fail until an authoritative discount owner exists.
 3. Plans returns canonical gym and plan terms; client cannot set gym, type, duration, or price.
-4. Member persists frozen terms before initiating Payment.
-5. Payment `reference_id` is Member's unique `purchase_id`, never the reusable `plan_id`.
+4. Member creates or reloads one pending purchase for `(user_id, idempotency_key)` and commits before Payment.
+5. Payment `reference_id` is Member's unique `purchase_id`, never the reusable `plan_id`. Same key reuses the same reference.
 6. Completion must match purchase ID, payment ID, payment type, user, gym, provider expectations, and `amount_vnd`.
 7. Activation and renewal use the frozen record. They never reread Plans.
-8. Processed-event and purchase state make completion replay idempotent.
+8. Processed-event claim and domain work share one TX; no claim release on failure.
 
 A Plans outage before purchase initiation fails closed. A Plans outage or catalog edit after initiation does not change completion behavior.
 
@@ -100,6 +101,7 @@ erDiagram
         bigint price_vnd
         varchar provider
         string payment_id
+        string idempotency_key "unique with user_id"
         varchar status "PENDING | PAYMENT_INITIATED | COMPLETED | FAILED"
         timestamp created_at
         timestamp updated_at
@@ -190,10 +192,11 @@ service MemberService {
   rpc GetMembershipStatusByUserId(GetMembershipStatusByUserIdRequest)
       returns (GetMembershipStatusByUserIdResponse);
 
-  // Deferred Check-in policy; no public HTTP mapping.
+  // Check-in only; verified SAN; no public HTTP mapping.
   rpc ValidateMembership(ValidateMembershipRequest)
       returns (ValidateMembershipResponse);
 
+  // Notification only; verified SAN; gym_ids min 1; no public HTTP mapping.
   rpc ListMembersByStatus(ListMembersByStatusRequest)
       returns (ListMembersByStatusResponse);
 }
@@ -205,14 +208,23 @@ G6 removed `GetPlans` and gym-location management/lookup RPCs from Member. G8 Me
 
 `GetMembershipStatusByUserId` receives both `user_id` and `gym_id`. It returns `NONE` for a known user without a subscription at that gym. Identifier does not guess after an availability failure.
 
+Aggregate member status is derived from all subscriptions (`ACTIVE` > `PAUSED` > `EXPIRED` > `NONE`). Gym-scoped reads use subscription status, not a blind copy from one gym.
+
 ## Workload Security
 
-- Identifier may call only `GetMembershipStatusByUserId` over a verified mTLS identity.
+SAN → method matrix:
+
+| Peer SAN | Allowed method |
+|----------|----------------|
+| `ms-gym-identifier` | `GetMembershipStatusByUserId` |
+| `ms-gym-checkin` | `ValidateMembership` |
+| `ms-gym-notification` | `ListMembersByStatus` |
+| `kong` | all end-user ROLE_RESTRICTED methods |
+
 - Member may call only Plans `ResolvePurchasablePlan` using its own certificate and independent client configuration.
-- Future Check-in may call Member `ValidateMembership` only after that service is opened and its workload policy is implemented.
 - Internal methods have no HTTP mapping or Kong route.
-- Workload metadata is not trusted unless bound to the verified peer certificate.
-- End-user trusted headers are never forwarded as workload credentials.
+- End-user claim headers are accepted only from Kong SAN; internal certs cannot forge them.
+- NetworkPolicy admits gRPC only from Kong + Identifier + Check-in + Notification.
 
 ## Deferred Check-in Boundary
 

@@ -25,7 +25,7 @@ The G6 Plans contract authorizes only:
 
 Check-in must not reuse either method or identity. Before kiosk provisioning is implemented, a later contract must define a Check-in-authorized Plans lookup, its exact semantics, and its mTLS allowlist. No current Plans V1 method is available to Check-in.
 
-Future scan processing may call Member `ValidateMembership(member_id, gym_id)` after Check-in's workload policy is implemented. Plans need not participate in each scan because the signed payload is bound to a previously provisioned gym.
+Future scan processing calls Member `ValidateMembership(member_id, gym_id)` over direct mTLS. Member allows only peer SAN `ms-gym-checkin` on that exact method (`INTERNAL_WORKLOAD`). No `x-user-*` headers and no Kong route. Plans need not participate in each scan because the signed payload is bound to a previously provisioned gym.
 
 ## Reversed QR Design
 
@@ -172,7 +172,7 @@ Redis may cache only short-lived derived current/next payloads. YugabyteDB and t
 | `RevokeDevice` | `DELETE /api/v1/checkin/devices/{device_id}` | Admin JWT | Deferred |
 | `RotateGymQrRootKey` | `POST /api/v1/checkin/gyms/{gym_id}/qr-root-key:rotate` | Admin JWT | Blocked on future Plans contract |
 
-Kong strips client-supplied trusted user headers before injecting validated claims. Display routes receive no user claims and authenticate inside Check-in. `CHECKIN_SERVICE` is a workload identity, not a public role.
+Kong strips client-supplied trusted user headers before injecting validated claims. Display routes receive no user claims and authenticate inside Check-in. Outbound Member calls use Check-in client certificate SAN `ms-gym-checkin` only; Member does not accept a `CHECKIN_SERVICE` role claim.
 
 ## Future Kafka Event
 

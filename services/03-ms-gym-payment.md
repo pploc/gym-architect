@@ -66,7 +66,7 @@ erDiagram
         bigint amount_vnd
         bigint original_amount_vnd "before discount"
         varchar payment_type "MEMBERSHIP | TRAINER_BOOKING"
-        uuid reference_id "plan_id or booking_id"
+        uuid reference_id "purchase_id (MEMBERSHIP) | booking_id"
         varchar provider "MOMO | ZALOPAY | MB_BANK"
         varchar provider_order_id
         varchar provider_tx_id
@@ -158,16 +158,21 @@ Webhook (IPN callback):
 
 ## Idempotency
 
-```
-idempotency_key = SHA256(user_id + payment_type + reference_id + date)
+Membership purchases from Member always pass `reference_id = purchase_id`.
+Member retries reuse that same `reference_id`; Payment must return the same payment intent.
 
-On InitiatePayment:
-  1. Compute idempotency_key
-  2. SELECT * FROM payments WHERE idempotency_key = ?
-  3. If exists AND status = COMPLETED → return existing result (no double charge)
-  4. If exists AND status = PENDING → return existing payment_url
-  5. If exists AND status = FAILED → create new attempt (new payment_id)
-  6. If not exists → create new PENDING record
+```
+Membership path (authoritative for ms-gym-member):
+  key = (payment_type=MEMBERSHIP, reference_id=purchase_id)
+
+On InitiatePayment for MEMBERSHIP:
+  1. SELECT * FROM payments WHERE payment_type = MEMBERSHIP AND reference_id = ?
+  2. If exists AND status IN (PENDING, COMPLETED) → return existing payment_id + payment_url
+  3. If exists AND status = FAILED → create new attempt only with a new Member purchase_id
+  4. If not exists → create new PENDING record
+
+Other payment types may still use a provider-local idempotency hash, but must never mint a
+second charge for the same membership purchase_id.
 ```
 
 ---

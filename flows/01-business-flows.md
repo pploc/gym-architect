@@ -91,13 +91,14 @@ sequenceDiagram
 
     rect rgb(255,245,230)
         C->>APP: Choose plan and provider
-        APP->>MB: PurchaseMembership(plan_id, provider, discount_code?)
+        APP->>MB: PurchaseMembership(plan_id, provider, idempotency_key, discount_code?)
         MB->>MB: Reject nonblank discount_code
         MB->>PL: ResolvePurchasablePlan(plan_id, selected_gym_id)
         PL-->>MB: Canonical plan_id, gym_id, type, duration, price_vnd
-        MB->>DB: Persist PENDING purchase with frozen terms
+        MB->>DB: Create/load PENDING purchase by (user_id, idempotency_key)
+        Note over MB,DB: Commit before Payment; stable purchase_id
         MB->>FP: InitiatePayment(reference_id=purchase_id)
-        FP-->>MB: payment_id, payment_url
+        FP-->>MB: payment_id, payment_url (same intent on retry)
         MB->>DB: Attach payment_id
         MB-->>APP: payment_id, payment_url
     end
@@ -106,8 +107,8 @@ sequenceDiagram
         Note over FP,KF: Fixture simulates successful provider completion
         FP->>KF: payment.completed.v1 reference_id=purchase_id
         KF-->>MB: Completion event
-        MB->>DB: Lock purchase and validate identity, payment, gym, type, amount
-        MB->>DB: Activate from frozen terms and mark completed atomically
+        MB->>DB: Claim event + lock purchase in one TX
+        MB->>DB: Activate from frozen terms and mark completed
         MB->>KF: membership.activated.v1 via outbox
     end
 ```
@@ -115,15 +116,17 @@ sequenceDiagram
 Critical rules:
 
 - Client never supplies trusted gym, plan type, duration, or price.
+- Client supplies a required `idempotency_key`; retries reuse the same purchase/reference.
 - Plans must return an active plan belonging to the selected active gym.
-- Member persists frozen terms before Payment initiation.
+- Member persists frozen terms and commits before Payment initiation.
 - Membership Payment `reference_id` is `purchase_id`, not `plan_id`.
 - Catalog edits or deactivation after initiation do not alter activation terms.
 - Completion never rereads Plans.
 - Mismatched amount, payment ID, user, gym, type, or purchase state prevents activation.
-- Replaying completion is idempotent.
+- Replaying completion is idempotent; failed claim rolls back with domain work.
 - G8 rejects nonblank discount codes; Promotion is not part of this flow.
 - Fake Payment is test infrastructure, not a production provider service.
+- End-user Member RPCs reach Member only through Kong mTLS identity.
 
 ## 4. Membership Pause and Resume
 

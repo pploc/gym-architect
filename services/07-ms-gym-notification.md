@@ -9,7 +9,7 @@
 - Send **Push notifications** (Firebase Cloud Messaging for mobile)
 - Notification preferences per user (opt-in/out per channel)
 - Notification history (append-only, queryable by user)
-- **Pure consumer** — triggered entirely by Kafka events, no sync gRPC calls from other services
+- Primarily Kafka-driven; outbound Member `ListMembersByStatus` for promotion fan-out only
 
 ---
 
@@ -128,7 +128,8 @@ sequenceDiagram
 
     KF->>NS: promotion.published<br/>{promotion_id, target: "ALL_ACTIVE", discount: 20, code: "GYM20"}
 
-    NS->>MS: gRPC ListMembersByStatus(ACTIVE, gym_id)
+    NS->>MS: ListMembersByStatus(ACTIVE, gym_ids) over mTLS SAN ms-gym-notification
+    Note over NS,MS: Direct workload RPC; not via Kong; gym_ids min 1
     MS-->>NS: [member_1, member_2, ..., member_500]
 
     NS->>NS: Check notification_preferences per user
@@ -146,6 +147,12 @@ sequenceDiagram
 
 **Rate limiting:** Go worker pool with bounded concurrency (50 goroutines).  
 Prevents overwhelming external APIs. Failed sends are retried 3x with exponential backoff.
+
+Member fan-out trust:
+
+- Peer SAN `ms-gym-notification` only on exact method `ListMembersByStatus`
+- Request must include at least one `gym_ids` entry (no chain-wide export)
+- No `x-user-*` headers; no Kong route for this method
 
 ---
 
