@@ -1,0 +1,5 @@
+timestamp=2026-08-09T12:52:52+07:00
+--- production source/config matches (expect none) ---
+(none)
+--- note ---
+common-java:2.0.2 transitively includes spring-kafka jars; Plans has no Kafka configuration or consumers.

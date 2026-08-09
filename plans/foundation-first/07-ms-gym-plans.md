@@ -97,7 +97,7 @@ Cover:
 - Reuse `gym-infra` Java CI and Docker workflows. **Done** (`.github/workflows/ci.yml` → `java-ci` with `build`, `docker-build` for `ms-gym-plans`).
 - Pin released dependencies; no `mavenLocal()` or local contract substitution. **Done** (`common-java:2.0.2`, `gym-proto-java:3.0.0`).
 - Public HTTP binds generated protobuf messages as camelCase JSON via `common-java` `ProtobufJsonHttpMessageConverter`. **Done.**
-- Add a Plans Helm values example with HTTP, gRPC, health, DB, and TLS settings. **Open.**
+- Add a Plans Helm values example with HTTP, gRPC, health, DB, and TLS settings. **Done** (`gym-infra/helm/gym-service/examples/ms-gym-plans-values.yaml`; evidence under `docs/evidence/foundation-first/g7/`).
 
 ## Verification
 

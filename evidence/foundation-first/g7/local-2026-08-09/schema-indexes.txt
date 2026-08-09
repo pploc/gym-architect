@@ -1,0 +1,8 @@
+              indexname               |                                                       indexdef                                                       
+--------------------------------------+----------------------------------------------------------------------------------------------------------------------
+ gym_locations_pkey                   | CREATE UNIQUE INDEX gym_locations_pkey ON public.gym_locations USING btree (id)
+ idx_gym_locations_chain_city_status  | CREATE INDEX idx_gym_locations_chain_city_status ON public.gym_locations USING btree (chain_id, city, status)
+ idx_membership_plans_gym_type_active | CREATE INDEX idx_membership_plans_gym_type_active ON public.membership_plans USING btree (gym_id, plan_type, active)
+ membership_plans_pkey                | CREATE UNIQUE INDEX membership_plans_pkey ON public.membership_plans USING btree (id)
+(4 rows)
+

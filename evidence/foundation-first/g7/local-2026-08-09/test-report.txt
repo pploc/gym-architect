@@ -1,0 +1,15 @@
+TOTAL tests=60 fail=0 err=0 skip=0
+com.gym.plans.integration.PlansApplicationIntegrationTest: tests=3 fail=0 err=0 skip=0
+com.gym.plans.integration.PlansFilterIntegrationTest: tests=2 fail=0 err=0 skip=0
+com.gym.plans.integration.PlansFlywayPostgresIntegrationTest: tests=1 fail=0 err=0 skip=0
+com.gym.plans.integration.PlansHttpIntegrationTest: tests=8 fail=0 err=0 skip=0
+com.gym.plans.integration.PlansMtlsWorkloadIntegrationTest: tests=6 fail=0 err=0 skip=0
+com.gym.plans.unit.config.GrpcConfigUnitTest: tests=5 fail=0 err=0 skip=0
+com.gym.plans.unit.grpc.GrpcAccessPolicyUnitTest: tests=3 fail=0 err=0 skip=0
+com.gym.plans.unit.grpc.PlansGrpcHandlerUnitTest: tests=10 fail=0 err=0 skip=0
+com.gym.plans.unit.http.PlansHttpControllerUnitTest: tests=2 fail=0 err=0 skip=0
+com.gym.plans.unit.model.DomainModelUnitTest: tests=2 fail=0 err=0 skip=0
+com.gym.plans.unit.service.GymLocationServiceUnitTest: tests=6 fail=0 err=0 skip=0
+com.gym.plans.unit.service.MembershipPlanPriceUnitTest: tests=2 fail=0 err=0 skip=0
+com.gym.plans.unit.service.MembershipPlanServiceUnitTest: tests=10 fail=0 err=0 skip=0
+JaCoCo LINE covered=290 missed=16 ratio=0.948

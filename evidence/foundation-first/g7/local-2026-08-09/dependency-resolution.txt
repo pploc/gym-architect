@@ -1,0 +1,27 @@
+timestamp=2026-08-09T12:48:30+07:00
+plans_sha=5a50a710231d957839197c407353c3d2928ceb56
+gym_infra_sha=09aca3b9b55de92b72a31f32718fdac756cf0551
+docs_sha=7fba60efe90d165ff15ef095c8cf9520dd8e8eb3
+jar=/home/phucl/Workplace/gapi/ms-gym-plans/build/libs/ms-gym-plans-1.0.0.jar
+BOOT-INF/lib/common-java-2.0.2-plain.jar
+BOOT-INF/lib/gym-proto-java-3.0.0.jar
+--- runtimeClasspath pins ---
++--- com.gym:common-java:2.0.2
+|    |    +--- org.flywaydb:flyway-core:12.4.0 (c)
+|    |    +--- org.flywaydb:flyway-database-postgresql:12.4.0 (c)
+|    |    +--- org.postgresql:postgresql:42.7.11 (c)
+|    |    +--- org.springframework.boot:spring-boot-flyway:4.1.0 (c)
+|    |    +--- org.springframework.boot:spring-boot-starter-flyway:4.1.0 (c)
+|    |    +--- org.springframework.kafka:spring-kafka:4.1.0 (c)
+|    |    +--- org.apache.kafka:kafka-clients:4.2.1 (c)
+|    +--- org.springframework.kafka:spring-kafka -> 4.1.0
+|    |    +--- org.apache.kafka:kafka-clients:4.2.1
+|    |    |    |    +--- org.apache.kafka:kafka-clients:7.7.1-ccs -> 4.2.1 (*)
+|    +--- com.gym.proto:gym-proto-java:1.1.0 -> 3.0.0
++--- com.gym.proto:gym-proto-java:3.0.0 (*)
++--- org.springframework.boot:spring-boot-starter-flyway -> 4.1.0
+|    +--- org.springframework.boot:spring-boot-flyway:4.1.0
+|    |    \--- org.flywaydb:flyway-core:12.4.0
++--- org.flywaydb:flyway-database-postgresql -> 12.4.0
+|    \--- org.flywaydb:flyway-core:12.4.0 (*)
+\--- org.postgresql:postgresql -> 42.7.11

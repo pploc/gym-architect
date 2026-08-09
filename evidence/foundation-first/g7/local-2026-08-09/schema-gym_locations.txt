@@ -1,0 +1,20 @@
+                                                      Table "public.gym_locations"
+   Column   |           Type           | Collation | Nullable |      Default      | Storage  | Compression | Stats target | Description 
+------------+--------------------------+-----------+----------+-------------------+----------+-------------+--------------+-------------
+ id         | character varying(64)    |           | not null |                   | extended |             |              | 
+ chain_id   | character varying(64)    |           | not null |                   | extended |             |              | 
+ name       | character varying(255)   |           | not null |                   | extended |             |              | 
+ address    | text                     |           | not null |                   | extended |             |              | 
+ city       | character varying(100)   |           | not null |                   | extended |             |              | 
+ status     | character varying(20)    |           | not null |                   | extended |             |              | 
+ created_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP | plain    |             |              | 
+ updated_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP | plain    |             |              | 
+Indexes:
+    "gym_locations_pkey" PRIMARY KEY, btree (id)
+    "idx_gym_locations_chain_city_status" btree (chain_id, city, status)
+Check constraints:
+    "chk_gym_locations_status" CHECK (status::text = ANY (ARRAY['ACTIVE'::character varying, 'CLOSED'::character varying]::text[]))
+Referenced by:
+    TABLE "membership_plans" CONSTRAINT "membership_plans_gym_id_fkey" FOREIGN KEY (gym_id) REFERENCES gym_locations(id)
+Access method: heap
+

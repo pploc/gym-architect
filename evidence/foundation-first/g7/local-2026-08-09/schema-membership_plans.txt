@@ -1,0 +1,24 @@
+                                                      Table "public.membership_plans"
+    Column     |           Type           | Collation | Nullable |      Default      | Storage  | Compression | Stats target | Description 
+---------------+--------------------------+-----------+----------+-------------------+----------+-------------+--------------+-------------
+ id            | character varying(64)    |           | not null |                   | extended |             |              | 
+ gym_id        | character varying(64)    |           | not null |                   | extended |             |              | 
+ name          | character varying(100)   |           | not null |                   | extended |             |              | 
+ plan_type     | character varying(20)    |           | not null |                   | extended |             |              | 
+ duration_days | integer                  |           |          |                   | plain    |             |              | 
+ price_vnd     | bigint                   |           | not null |                   | plain    |             |              | 
+ description   | text                     |           | not null | ''::text          | extended |             |              | 
+ active        | boolean                  |           | not null | true              | plain    |             |              | 
+ created_at    | timestamp with time zone |           | not null | CURRENT_TIMESTAMP | plain    |             |              | 
+ updated_at    | timestamp with time zone |           | not null | CURRENT_TIMESTAMP | plain    |             |              | 
+Indexes:
+    "membership_plans_pkey" PRIMARY KEY, btree (id)
+    "idx_membership_plans_gym_type_active" btree (gym_id, plan_type, active)
+Check constraints:
+    "chk_membership_plans_duration" CHECK ((plan_type::text = ANY (ARRAY['MONTHLY'::character varying, 'YEARLY'::character varying]::text[])) AND duration_days IS NOT NULL AND duration_days > 0 OR plan_type::text = 'LIFETIME'::text AND duration_days IS NULL)
+    "chk_membership_plans_price" CHECK (price_vnd >= 0)
+    "chk_membership_plans_type" CHECK (plan_type::text = ANY (ARRAY['MONTHLY'::character varying, 'YEARLY'::character varying, 'LIFETIME'::character varying]::text[]))
+Foreign-key constraints:
+    "membership_plans_gym_id_fkey" FOREIGN KEY (gym_id) REFERENCES gym_locations(id)
+Access method: heap
+

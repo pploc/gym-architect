@@ -1,0 +1,5 @@
+ version |    description    | success 
+---------+-------------------+---------
+ 1       | init plans schema | t
+(1 row)
+

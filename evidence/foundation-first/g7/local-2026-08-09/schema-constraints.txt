@@ -1,0 +1,11 @@
+            conname            | contype |                                                                                                                        def                                                                                                                         
+-------------------------------+---------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ chk_gym_locations_status      | c       | CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'CLOSED'::character varying])::text[])))
+ chk_membership_plans_duration | c       | CHECK (((((plan_type)::text = ANY ((ARRAY['MONTHLY'::character varying, 'YEARLY'::character varying])::text[])) AND (duration_days IS NOT NULL) AND (duration_days > 0)) OR (((plan_type)::text = 'LIFETIME'::text) AND (duration_days IS NULL))))
+ chk_membership_plans_price    | c       | CHECK ((price_vnd >= 0))
+ chk_membership_plans_type     | c       | CHECK (((plan_type)::text = ANY ((ARRAY['MONTHLY'::character varying, 'YEARLY'::character varying, 'LIFETIME'::character varying])::text[])))
+ gym_locations_pkey            | p       | PRIMARY KEY (id)
+ membership_plans_gym_id_fkey  | f       | FOREIGN KEY (gym_id) REFERENCES gym_locations(id)
+ membership_plans_pkey         | p       | PRIMARY KEY (id)
+(7 rows)
+

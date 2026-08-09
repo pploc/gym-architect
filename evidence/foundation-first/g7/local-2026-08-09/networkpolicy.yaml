@@ -1,0 +1,51 @@
+---
+# Source: gym-service/templates/networkpolicy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ms-gym-plans-network-policy
+  labels:
+    helm.sh/chart: gym-service-1.0.0
+    app.kubernetes.io/name: ms-gym-plans
+    app.kubernetes.io/instance: ms-gym-plans
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ms-gym-plans
+      app.kubernetes.io/instance: ms-gym-plans
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes: istio-system
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: kong
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ms-gym-gateway
+      - podSelector:
+          matchLabels:
+            istio: ingressgateway
+      ports:
+      - port: 8080
+        protocol: TCP
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ms-gym-identifier
+      ports:
+      - port: 50051
+        protocol: TCP
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: ms-gym-member
+      ports:
+      - port: 50051
+        protocol: TCP
+
