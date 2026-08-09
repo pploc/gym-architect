@@ -157,26 +157,28 @@ Identity event contracts are gym-neutral. Their prior `gym_id` fields are reserv
 ```protobuf
 service IdentityService {
   // Public
-  rpc Register(RegisterRequest) returns (AuthResponse);
-  rpc Login(LoginRequest) returns (AuthResponse);
-  rpc LoginWithGoogle(GoogleLoginRequest) returns (AuthResponse);
-  rpc RefreshToken(RefreshTokenRequest) returns (AuthResponse);
-  rpc VerifyEmail(VerifyEmailRequest) returns (AuthResponse);
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc LoginWithGoogle(LoginWithGoogleRequest) returns (LoginWithGoogleResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc VerifyEmail(VerifyEmailRequest) returns (VerifyEmailResponse);
   rpc ResendEmailVerification(ResendEmailVerificationRequest)
-      returns (google.protobuf.Empty);
+      returns (ResendEmailVerificationResponse);
 
   // Authenticated
-  rpc Logout(LogoutRequest) returns (google.protobuf.Empty);
-  rpc GetCurrentUser(google.protobuf.Empty) returns (UserResponse);
-  rpc ChangePassword(ChangePasswordRequest) returns (google.protobuf.Empty);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
   rpc SelectGym(SelectGymRequest) returns (SelectGymResponse);
 
   // Admin
-  rpc CreateTrainerAccount(CreateTrainerRequest) returns (UserResponse);
-  rpc SuspendUser(SuspendUserRequest) returns (google.protobuf.Empty);
+  rpc CreateTrainerAccount(CreateTrainerAccountRequest) returns (CreateTrainerAccountResponse);
+  rpc SuspendUser(SuspendUserRequest) returns (SuspendUserResponse);
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
 }
 ```
+
+Wire JSON (gateway `UseProtoNames: true`) uses closed enums with full proto names, for example `status: "USER_STATUS_PENDING_VERIFICATION"` and `membership_status: "MEMBERSHIP_STATUS_NONE"`. Domain/JWT/DB keep short names (`PENDING_VERIFICATION`, `NONE`); map only at the wire boundary. Every RPC has unique request/response messages (no shared `AuthResponse` / `Empty`).
 
 Public methods are Register, Login, Google Login, Refresh, VerifyEmail, and ResendEmailVerification. Logout, `SelectGym`, and all administration methods are protected.
 

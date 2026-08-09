@@ -22,9 +22,10 @@ Only Identifier, Member, and Plans are active service scope. Other service docum
 
 - G0–G4: historical foundation gates completed with evidence retained under `docs/evidence/foundation-first`.
 - G5: passed Identifier-led Kong/Identifier/Member E2E through `gym-infra/kong/run-g5.sh`.
-- G6: Plans/Member/Payment contracts published as `v3.0.0` / `gym-proto-java:3.0.0` / `proto-go/v3@v3.0.0`.
-- G7: passed. Plans owns locations/catalog; evidence under `docs/evidence/foundation-first/g7/local-2026-08-09/` (reverified 2026-08-09 on current develop HEADs: plans `ecbccfac`, gym-infra `96dd2298`, docs `69847db4`; 70 tests, Helm/NetworkPolicy render pass).
-- G8: passed. Identifier + Member + Plans clean-boundary E2E via `gym-infra/kong/run-g8.sh` (`RUN_EXIT:0`); evidence under `docs/evidence/foundation-first/g8/local-2026-08-09/`. Owner approval remains pending.
+- G6: Plans/Member/Payment contracts first published as historical `v3.0.0` / `gym-proto-java:3.0.0` / `proto-go/v3@v3.0.0`.
+- G7: passed. Plans owns locations/catalog; evidence under `docs/evidence/foundation-first/g7/local-2026-08-09/`.
+- G8: passed on prior contract generation; evidence under `docs/evidence/foundation-first/g8/local-2026-08-09/`. Owner approval remains pending.
+- **Active contract break (post-G8, in place on `*.v1`):** Java `gym-proto-java:4.0.0`, Go module `github.com/pploc/proto-go` (no `/v4` path), `common-go` 0.4.0, `common-java` 2.1.0. RPC-specific messages, prefixed closed enums, Protovalidate. Kafka topics stay `.v1` and overwrite Schema Registry subjects in place (no dual `.v2` generation). Re-run `./kong/run-g8.sh` after published/staged service images resolve the new coordinates; prior G8 evidence stays historical.
 
 G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 revised that boundary; G8 evidence supersedes G5 for location validation and catalog ownership. Member external HTTP remains intentionally unexposed.
 

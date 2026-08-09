@@ -1,6 +1,6 @@
 # Project Repository Structure
 
-> **Roadmap status:** Sibling-repository workspace. G6–G8 complete for Identifier/Member/Plans. `ms-gym-plans` pins `common-java:2.0.2`; additive G8 topology under `gym-infra/kong/g8-*`. Historical Phase 0–5 evidence remains unchanged.
+> **Roadmap status:** Sibling-repository workspace. G6–G8 complete for Identifier/Member/Plans. Active pins target `common-java:2.1.0` and `gym-proto-java:4.0.0` (local composite/replace only for pre-publish staging). Additive G8 topology under `gym-infra/kong/g8-*`. Historical Phase 0–5 evidence remains unchanged.
 
 ## Workspace Model
 
@@ -55,7 +55,7 @@ G6 target changes:
 - Add `plans.v1.PlansService` and public Plans HTTP mappings.
 - Remove plan listing and gym-location RPCs/messages from `member.v1.MemberService`.
 - Keep Plans `GetActiveGym` and `ResolvePurchasablePlan` workload-only and absent from HTTP mappings.
-- Prepare immutable release targets: Java `com.gym.proto:gym-proto-java:3.0.0` and Go `github.com/pploc/proto-go/v3`.
+- Active release targets: Java `com.gym.proto:gym-proto-java:4.0.0` and Go module `github.com/pploc/proto-go` (no `/v4` path segment; packages remain `*.v1`). Prior `3.0.0` / `proto-go/v3` artifacts stay historical.
 
 Those release coordinates remain proposals until G6 validation and explicit publication approval. Existing v2 artifacts are never rewritten.
 
@@ -172,7 +172,7 @@ Workspace-level convenience targets may coordinate repositories, but they do not
 ## Dependency Rules
 
 - Services consume tagged generated artifacts; generated stubs are not copied into service repositories.
-- Shared runtime behavior belongs in `common-go` or `common-java` only when more than one service needs it. Example: `common-java:2.0.2` ships servlet auto-config for camelCase protobuf JSON HTTP binding reused by Plans (and Member later); service-owned DTO type packages stay out of common libraries.
+- Shared runtime behavior belongs in `common-go` or `common-java` only when more than one service needs it. Example: `common-java:2.1.0` ships servlet auto-config for camelCase protobuf JSON HTTP binding, Protovalidate interceptor, and canonical error mapping reused by Plans/Member; service-owned DTO type packages stay out of common libraries.
 - Service repositories own their domain and database migrations.
 - Cross-service IDs are opaque strings and never database foreign keys.
 - Public HTTP routes come from per-service HTTP configuration; internal workload RPCs remain unmapped.

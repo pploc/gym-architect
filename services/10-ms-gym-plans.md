@@ -1,6 +1,6 @@
 # Plans Service
 
-> **Tech:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL `plans_db` | **Ports:** 50051 gRPC / 8080 HTTP | **Deps:** `common-java:2.0.2`, `gym-proto-java:3.0.0`
+> **Tech:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL `plans_db` | **Ports:** 50051 gRPC / 8080 HTTP | **Deps:** `common-java:2.1.0`, `gym-proto-java:4.0.0`
 
 ## Responsibilities
 
@@ -59,22 +59,24 @@ The plan-to-gym foreign key is local to `plans_db`. Identifier and Member store 
 
 ```protobuf
 service PlansService {
-  rpc CreateGymLocation(CreateGymLocationRequest) returns (GymLocationResponse);
-  rpc UpdateGymLocation(UpdateGymLocationRequest) returns (GymLocationResponse);
-  rpc GetGymLocation(GetGymLocationRequest) returns (GymLocationResponse);
-  rpc ListGymLocations(ListGymLocationsRequest) returns (GymLocationsResponse);
+  rpc CreateGymLocation(CreateGymLocationRequest) returns (CreateGymLocationResponse);
+  rpc UpdateGymLocation(UpdateGymLocationRequest) returns (UpdateGymLocationResponse);
+  rpc GetGymLocation(GetGymLocationRequest) returns (GetGymLocationResponse);
+  rpc ListGymLocations(ListGymLocationsRequest) returns (ListGymLocationsResponse);
 
-  rpc CreateMembershipPlan(CreateMembershipPlanRequest) returns (MembershipPlanResponse);
-  rpc UpdateMembershipPlan(UpdateMembershipPlanRequest) returns (MembershipPlanResponse);
-  rpc GetMembershipPlan(GetMembershipPlanRequest) returns (MembershipPlanResponse);
-  rpc ListMembershipPlans(ListMembershipPlansRequest) returns (MembershipPlansResponse);
+  rpc CreateMembershipPlan(CreateMembershipPlanRequest) returns (CreateMembershipPlanResponse);
+  rpc UpdateMembershipPlan(UpdateMembershipPlanRequest) returns (UpdateMembershipPlanResponse);
+  rpc GetMembershipPlan(GetMembershipPlanRequest) returns (GetMembershipPlanResponse);
+  rpc ListMembershipPlans(ListMembershipPlansRequest) returns (ListMembershipPlansResponse);
 
   // Workload-only; no HTTP mapping.
-  rpc GetActiveGym(GetActiveGymRequest) returns (GymLocationResponse);
+  rpc GetActiveGym(GetActiveGymRequest) returns (GetActiveGymResponse);
   rpc ResolvePurchasablePlan(ResolvePurchasablePlanRequest)
-      returns (ResolvedPlanResponse);
+      returns (ResolvePurchasablePlanResponse);
 }
 ```
+
+HTTP JSON (common-java `JsonFormat`) uses full enum names, for example `planType: "PLAN_TYPE_MONTHLY"` and `status: "GYM_LOCATION_STATUS_CLOSED"`. Domain/DB keep short names (`MONTHLY`, `CLOSED`). No shared `GymLocationResponse` / `MembershipPlanResponse` / `ResolvedPlanResponse`.
 
 ### HTTP routes
 
@@ -143,7 +145,7 @@ Stable `x-error-code` identifies the domain condition. Internal failures are red
 - Identifier and Member reach Plans gRPC `50051` through caller-specific NetworkPolicy and mTLS.
 - Plans has no Kafka or Schema Registry environment variables.
 - CI reuses `pploc/gym-infra` `java-ci.yml` (`./gradlew build`) and `docker-build.yml` for image push.
-- Pin `com.gym:common-java:2.0.2` and `com.gym.proto:gym-proto-java:3.0.0` from GitHub Packages; no `mavenLocal()`.
+- Pin `com.gym:common-java:2.1.0` and `com.gym.proto:gym-proto-java:4.0.0` from GitHub Packages; no `mavenLocal()` (local composite/includeBuild only for pre-publish staging).
 
 ## Tests
 

@@ -171,24 +171,24 @@ Scheduled expiry and warning jobs read subscriptions and their snapshots. They n
 |---|---|
 | `identity.user.registered.v1` | Create gym-neutral member shell with `NONE` status |
 | `identity.user.suspended.v1` | Suspend profile and apply subscription policy idempotently |
-| `payment.completed.v1` with `type=MEMBERSHIP` | Resolve `reference_id` as `purchase_id`, validate frozen record, activate idempotently |
+| `payment.completed.v1` with `type=PAYMENT_TYPE_MEMBERSHIP` (wire enum; domain still `MEMBERSHIP`) | Resolve `reference_id` as `purchase_id`, validate frozen record, activate idempotently |
 
 ## API Target
 
 ```protobuf
 service MemberService {
-  rpc GetMember(GetMemberRequest) returns (MemberResponse);
-  rpc UpdateProfile(UpdateProfileRequest) returns (MemberResponse);
+  rpc GetMember(GetMemberRequest) returns (GetMemberResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
   rpc ListMembers(ListMembersRequest) returns (ListMembersResponse);
 
-  rpc PurchaseMembership(PurchaseMembershipRequest) returns (PurchaseResponse);
-  rpc PauseMembership(PauseMembershipRequest) returns (MembershipResponse);
-  rpc ResumeMembership(ResumeMembershipRequest) returns (MembershipResponse);
-  rpc GetMembershipStatus(GetMembershipStatusRequest) returns (MembershipResponse);
+  rpc PurchaseMembership(PurchaseMembershipRequest) returns (PurchaseMembershipResponse);
+  rpc PauseMembership(PauseMembershipRequest) returns (PauseMembershipResponse);
+  rpc ResumeMembership(ResumeMembershipRequest) returns (ResumeMembershipResponse);
+  rpc GetMembershipStatus(GetMembershipStatusRequest) returns (GetMembershipStatusResponse);
 
   // Identifier only; workload mTLS; no HTTP mapping.
   rpc GetMembershipStatusByUserId(GetMembershipStatusByUserIdRequest)
-      returns (MembershipResponse);
+      returns (GetMembershipStatusByUserIdResponse);
 
   // Deferred Check-in policy; no public HTTP mapping.
   rpc ValidateMembership(ValidateMembershipRequest)
@@ -198,6 +198,8 @@ service MemberService {
       returns (ListMembersByStatusResponse);
 }
 ```
+
+Closed vocabularies on the wire are `common.v1` prefixed enums (`MembershipStatus.MEMBERSHIP_STATUS_ACTIVE`, `PlanType.PLAN_TYPE_MONTHLY`, `PaymentType.PAYMENT_TYPE_MEMBERSHIP`). Domain DTOs and JWT claims keep short names. No shared `MemberResponse` / `PurchaseResponse` / `MembershipResponse`.
 
 G6 removed `GetPlans` and gym-location management/lookup RPCs from Member. G8 Member code and schema match that boundary.
 

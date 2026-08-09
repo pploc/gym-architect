@@ -116,7 +116,7 @@ var domainToGRPC = map[error]codes.Code{
 **Import:** Gradle dependency
 
 ```groovy
-implementation 'com.gym:common-java:1.0.0'
+implementation 'com.gym:common-java:2.1.0'
 ```
 
 ### Structure
@@ -253,7 +253,7 @@ Breaking change in common-* → MAJOR bump
   → Services upgrade at their own pace (no forced lockstep)
   → CI runs tests against latest common-* before merge
 
-`gym-proto` is the single source of truth for schemas and versioned cross-language fixtures. It publishes generated Go stubs as the tagged `github.com/pploc/proto-go` module and Java stubs as `com.gym.proto:gym-proto-java`.
+`gym-proto` is the single source of truth for schemas and versioned cross-language fixtures. Active consumers use Go module `github.com/pploc/proto-go` and Java `com.gym.proto:gym-proto-java:4.0.0`. Source packages remain `*.v1`; closed vocabularies are prefixed enums; every RPC has unique request/response messages; Protovalidate annotates requests and events. Kafka topic names stay on `.v1` subjects and are overwritten in place on enum breaks (no dual `.v2` generation).
   → `buf generate` regenerates both languages during development
   → Consumers resolve tagged published stubs without local Go `replace` directives
 ```

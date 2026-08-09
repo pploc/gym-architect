@@ -4,6 +4,8 @@
 
 Kafka values use concrete Protobuf messages with Schema Registry framing. Kafka is greenfield: no JSON topics, envelopes, or deployed offsets require compatibility adapters.
 
+Closed event fields use `common.v1` prefixed enums (for example `PaymentType.PAYMENT_TYPE_MEMBERSHIP`, `Role.ROLE_CUSTOMER`). Domain persistence and JWT claims still store short names (`MEMBERSHIP`, `CUSTOMER`); map only at the wire boundary.
+
 ## Frozen v1 Topics
 
 | Event | Topic | Subject | Producer through G8 |
@@ -20,7 +22,9 @@ Kafka values use concrete Protobuf messages with Schema Registry framing. Kafka 
 
 The current branch also defines `EmailVerificationRequestedEvent` for `identity.email.verification-requested.v1`; it remains outside the released nine-topic wire-format inventory until a later contract release includes it. Other Protobuf event messages in this catalog are versioned schema definitions, but their topics, producers, consumers, and deployments remain deferred.
 
-Topic names follow `{domain}.{entity}.{action}.v1`. Subjects use `TopicNameStrategy` (`<topic>-value`) with `BACKWARD` compatibility. Production uses `auto.register.schemas=false`. Member's consumer group is `ms-gym-member-v1`; DLQ topics use `{topic}.DLQ`.
+Topic names follow `{domain}.{entity}.{action}.v1`. Subjects use `TopicNameStrategy` (`<topic>-value`). Production uses `auto.register.schemas=false`. Member's consumer group is `ms-gym-member-v1`; DLQ topics use `{topic}.DLQ`.
+
+Enum string→enum wire breaks overwrite the same `.v1-value` subjects in place under paused traffic (no dual `.v2` topics/subjects). Compatibility mode for that cutover is not BACKWARD against the prior string schema; treat as coordinated greenfield subject replacement on disposable pre-production clusters.
 
 ## G8 Event Flow
 

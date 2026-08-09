@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G6–G8 complete for Identifier/Member/Plans. Contracts `v3.0.0`; Plans owns catalog (G7); three-service integration proven by `run-g8.sh` (G8). G0–G5 remain historical pre-split evidence. See [Phase 8](../plans/foundation-first/08-three-service-integration.md) and `docs/evidence/foundation-first/g8/local-2026-08-09/`.
+> **Roadmap status:** G6–G8 complete for Identifier/Member/Plans. Active contracts break in place on packages `*.v1` and publish as Java `gym-proto-java:4.0.0` / Go `github.com/pploc/proto-go` (Maven/module version 4.x coordinates; source packages stay `*.v1`). Shared libs: `common-go` 0.4.0, `common-java` 2.1.0. Plans owns catalog (G7); three-service integration proven by `run-g8.sh` (G8). G0–G5 and prior G8 evidence remain historical. See [Phase 8](../plans/foundation-first/08-three-service-integration.md).
 
 ## System Context
 
