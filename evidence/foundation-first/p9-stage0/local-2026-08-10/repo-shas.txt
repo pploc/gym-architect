@@ -35,3 +35,28 @@ fixture_sha256=339824c908900c8b85aaa12d4e03070833d43dc5e35190875a37cd6738e8c0f7
 7661381 feat: stage 0 identity-only JWT and explicit gym contracts
 54f1373 fix: run retired-symbol verifier with python3
 59000df fix: assert fixture subjects exist instead of total registry count
+
+## Consumer develop HEADs after Stage 0 adoption + CI fixes (2026-08-10)
+ms-gym-identifier d1a8fbed6b2d404130f2103848fac8b0939dea20
+  f22217f feat: stage 0 identity-only JWT and remove Member dependency
+  d1a8fbe fix: remove unused membership status mapper
+  ci_run=https://github.com/pploc/ms-gym-identifier/actions/runs/31407857454
+  ci_conclusion=success
+
+ms-gym-member e6280d73069b671b9229f4cec7d6ef109f50f5a3
+  78cc936 feat: stage 0 explicit gym context and SUPER_ADMIN policies
+  e6280d7 fix: use checked-in test PEMs for Plans mTLS unit tests
+  ci_run=https://github.com/pploc/ms-gym-member/actions/runs/31407862948
+  ci_conclusion=success
+
+ms-gym-plans 54bc02c2bd153145b8fe116bb948593b50639ccc
+  54bc02c feat: stage 0 SUPER_ADMIN-only Plans mutations
+  ci_run=https://github.com/pploc/ms-gym-plans/actions/runs/31406885468
+  ci_conclusion=success
+
+gym-infra b6c4a0dba121371a4231ce208ba9838c466c3e23
+  b6c4a0d feat: stage 0 identity-only Kong claims and drop Identifier Member edge
+  ci_run=https://github.com/pploc/gym-infra/actions/runs/31406885314
+  ci_conclusion=success
+
+docs 9d61d40c (pre-CI-evidence update; this file supersedes consumer pin notes)

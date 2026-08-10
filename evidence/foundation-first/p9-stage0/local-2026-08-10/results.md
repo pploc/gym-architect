@@ -27,6 +27,7 @@ Plan gates from `09-kong-grpc-gateway-openapi.md` Stage 0.
 | Live Kong gateway tests | PASS | `go test ./...` under kong/tests |
 | Live G5 | NOT RUN | optional; needs package tokens + full compose build |
 | Immutable publication of `v5.0.0` / Java `5.0.0` / Go `v1.5.0` | PASS | workflow 31404520393; release + GH Packages + proto-go tag |
+| Consumer develop CI green | PASS | Identifier 31407857454; Member 31407862948; Plans 31406885468; gym-infra 31406885314 |
 
 ## Publication notes
 
@@ -38,3 +39,9 @@ Plan gates from `09-kong-grpc-gateway-openapi.md` Stage 0.
 
 - Identifier `go.mod`: `github.com/pploc/proto-go v1.5.0`, replace removed.
 - Member/Plans: `implementation 'com.gym.proto:gym-proto-java:5.0.0'` resolves from GitHub Packages.
+
+## Consumer CI notes (develop)
+
+- Identifier first Stage 0 push `f22217f` failed: unused `toProtoMembershipStatus` (staticcheck U1000 / golangci unused). Fixed `d1a8fbe`.
+- Member first Stage 0 push `78cc936` failed: `PlansGrpcClientUnitTest` mTLS paths under gitignored `certs/local/`. Fixed with checked-in `src/test/resources/mtls/*` at `e6280d7`.
+- Plans `54bc02c` and gym-infra `b6c4a0d` green on first Stage 0 push.

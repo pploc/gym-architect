@@ -110,3 +110,31 @@ go get github.com/pploc/proto-go@v1.5.0 && go mod tidy && go test -race ./... &&
 # Member/Plans against GH Packages
 ./gradlew --refresh-dependencies clean compileJava compileTestJava
 ./gradlew spotlessCheck check
+
+# Consumer develop commits + CI (2026-08-10T23:26+07:00)
+# Identifier
+git -C ms-gym-identifier push origin develop  # f22217f Stage 0
+# CI 31406874197 failure: unused toProtoMembershipStatus
+git -C ms-gym-identifier commit -m "fix: remove unused membership status mapper"  # d1a8fbe
+git -C ms-gym-identifier push origin develop
+gh run view 31407857454 --repo pploc/ms-gym-identifier
+# conclusion=success headSha=d1a8fbed6b2d404130f2103848fac8b0939dea20
+
+# Member
+git -C ms-gym-member push origin develop  # 78cc936 Stage 0
+# CI 31406885929 failure: PlansGrpcClientUnitTest CertificateException (certs/local gitignored)
+# fix: src/test/resources/mtls/{ca,client}.{crt,key} + unit test paths
+git -C ms-gym-member commit -m "fix: use checked-in test PEMs for Plans mTLS unit tests"  # e6280d7
+git -C ms-gym-member push origin develop
+gh run view 31407862948 --repo pploc/ms-gym-member
+# conclusion=success headSha=e6280d73069b671b9229f4cec7d6ef109f50f5a3
+
+# Plans
+git -C ms-gym-plans push origin develop  # 54bc02c
+gh run view 31406885468 --repo pploc/ms-gym-plans
+# conclusion=success headSha=54bc02c2bd153145b8fe116bb948593b50639ccc
+
+# gym-infra
+git -C gym-infra push origin develop  # b6c4a0d
+gh run view 31406885314 --repo pploc/gym-infra
+# conclusion=success headSha=b6c4a0dba121371a4231ce208ba9838c466c3e23
