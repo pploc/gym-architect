@@ -59,4 +59,4 @@ gym-infra b6c4a0dba121371a4231ce208ba9838c466c3e23
   ci_run=https://github.com/pploc/gym-infra/actions/runs/31406885314
   ci_conclusion=success
 
-docs 9d61d40c (pre-CI-evidence update; this file supersedes consumer pin notes)
+docs e0329f8c1beb15fa42e0facecb0b0f408ff9725e
