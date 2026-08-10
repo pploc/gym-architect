@@ -8,7 +8,7 @@
 - Create / manage workout templates (routines, splits)
 - Workout history with pagination (time-series query)
 - Personal records (PR) tracking per exercise
-- **Access gated:** only `ACTIVE` membership (checked via JWT `membership_status` claim)
+- **Access gated:** only live `ACTIVE` membership through a future explicit, gym-scoped Member contract; never a JWT status claim
 
 ---
 
@@ -16,14 +16,14 @@
 
 ```mermaid
 graph LR
-    REQ[gRPC Request] --> INT[gRPC Interceptor]
-    INT --> CHECK{membership_status == ACTIVE?}
+    REQ[gRPC Request with explicit gym_id] --> AUTH[Resolve verified user identity]
+    AUTH --> MEMBER[Future Member membership-validation contract]
+    MEMBER --> CHECK{Live status ACTIVE for user and gym?}
     CHECK -->|Yes| HANDLER[Use Case Handler]
     CHECK -->|No| DENY[PERMISSION_DENIED: Active membership required]
 ```
 
-JWT `membership_status` is **eventually consistent** — updated on next token refresh.  
-Acceptable trade-off: worst case, a just-expired member logs one extra workout before next refresh.
+Workout is deferred. Before implementation, freeze an exact Workout-to-Member mTLS method and authorization policy. Stable JWT supplies identity/role only. Request `gym_id` is context and must match Member-owned live membership state.
 
 ---
 
@@ -199,7 +199,7 @@ internal/
 │   ├── grpc/
 │   │   ├── handler.go
 │   │   ├── mapper.go
-│   │   └── auth_interceptor.go   // membership_status check
+│   │   └── auth_interceptor.go   // stable identity only; live membership via Member port
 │   ├── repository/
 │   │   ├── cassandra_workout.go
 │   │   ├── cassandra_template.go

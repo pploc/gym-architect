@@ -6,7 +6,7 @@ Architecture and implementation documentation for multi-location gym backend.
 
 Only these services are actionable now:
 
-1. [`ms-gym-identifier`](services/01-ms-gym-identifier.md) — identity, authentication, gym-neutral and selected-gym tokens.
+1. [`ms-gym-identifier`](services/01-ms-gym-identifier.md) — identity, authentication, and stable identity tokens.
 2. [`ms-gym-member`](services/02-ms-gym-member.md) — member profiles, subscriptions, membership lifecycle and validation.
 3. [`ms-gym-plans`](services/10-ms-gym-plans.md) — canonical gym locations, gym-specific plans and VND pricing.
 
@@ -19,6 +19,7 @@ Use [Foundation-First Platform Roadmap](plans/foundation-first/README.md). G0–
 - [Phase 6 — Plans contracts](plans/foundation-first/06-plans-contracts.md)
 - [Phase 7 — `ms-gym-plans`](plans/foundation-first/07-ms-gym-plans.md)
 - [Phase 8 — Three-service integration](plans/foundation-first/08-three-service-integration.md)
+- [Phase 9 — Stable identity, Kong gRPC-Gateway, and generated OpenAPI 3.0](plans/foundation-first/09-kong-grpc-gateway-openapi.md)
 
 [`PLAN.md`](PLAN.md) is a catalog and historical dependency sketch, not an execution plan.
 

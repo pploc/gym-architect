@@ -1,6 +1,6 @@
 # Phase 5 — Kong and `ms-gym-identifier`
 
-> **Completed historical scope:** G5 passed against the pre-split Member boundary. Phase 8 changes selected-gym location validation from Member to Plans and must produce new three-service evidence. Existing G5 evidence remains unchanged.
+> **Completed historical scope:** G5 passed against the pre-split Member boundary. Phase 8 moved selected-gym location validation from Member to Plans. [Phase 9 Stage 0](09-kong-grpc-gateway-openapi.md#stage-0--replace-selected-gym-jwt-state-before-gateway-generation) supersedes the selected-gym token entirely with stable identity and explicit gym request context. Existing G5 evidence remains unchanged.
 
 ## Objective
 

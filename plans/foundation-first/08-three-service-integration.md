@@ -1,6 +1,6 @@
 # Phase 8 — Identifier, Member, and Plans Integration
 
-> **Status:** G8 technical pass on prior generation. Evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/` (`./kong/run-g8.sh` → `RUN_EXIT:0`). Active code now targets contract break (Java `4.0.0` / Go `github.com/pploc/proto-go`, enums, RPC-specific messages); G8 fixture/scripts updated. Fresh E2E re-run blocked until service images resolve published/staged pins. Owner approval pending.
+> **Status:** G8 technical pass on prior generation. Evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/` (`./kong/run-g8.sh` → `RUN_EXIT:0`). [Phase 9 Stage 0](09-kong-grpc-gateway-openapi.md#stage-0--replace-selected-gym-jwt-state-before-gateway-generation) supersedes G8 selected-gym JWT issuance and Identifier-to-Member lookup; later G9 stages supersede Plans native business HTTP. G8 evidence remains immutable. Owner approval pending.
 
 ## Objective
 

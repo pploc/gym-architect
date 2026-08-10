@@ -22,7 +22,7 @@ common-go/
 │   │   ├── metrics.go           # Prometheus gRPC metrics
 │   │   └── tracing.go           # OpenTelemetry trace propagation
 │   └── middleware/
-│       └── membership_guard.go  # Rejects if membership_status != ACTIVE
+│       └── membership_guard.go  # Legacy claim guard; do not use for new membership authorization
 ├── kafka/
 │   ├── producer.go              # Kafka producer wrapper (idempotent, retries)
 │   ├── consumer.go              # Consumer group wrapper (manual commit)
@@ -55,17 +55,11 @@ common-go/
 
 #### Auth Interceptor
 
-Canonical roles are `CUSTOMER`, `TRAINER`, `ADMIN`, and `SUPER_ADMIN`; workload
-identities are separate and never represented in `x-user-role`. Membership
-statuses are `NONE`, `ACTIVE`, `PAUSED`, and `EXPIRED`. Shared libraries trim
-and normalize trusted headers, reject conflicting duplicates, and fail closed
-when an `ACTIVE` membership is required. New customers and non-customer roles
-use `NONE`.
+Canonical roles are `CUSTOMER`, `TRAINER`, `ADMIN`, and `SUPER_ADMIN`; workload identities are separate and never represented in `x-user-role`. Phase 9 JWTs contain stable identity/role only. They contain no `gym_id` and no `membership_status`.
 
-Kong establishes trust by validating external JWTs and stripping client copies
-before claim injection. Shared libraries consume trusted claims; they do not
-perform normal downstream JWT signature validation. Workload calls establish
-trust separately through verified mTLS peer identity.
+Kong establishes trust by validating external JWTs and stripping client copies before identity/role injection. Shared libraries consume trusted identity claims only when transport policy verifies Kong SAN; they do not perform normal downstream JWT signature validation. Workload calls establish trust separately through verified mTLS peer identity and exact method allowlists.
+
+Mutable membership statuses remain `NONE`, `ACTIVE`, `PAUSED`, and `EXPIRED`, but Member owns them. New services must not authorize from a JWT membership claim or legacy `membership_guard`. They require an explicit gym-scoped Member contract that returns live state. Request `gym_id` remains resource context, not authorization.
 
 ```go
 // grpc/interceptor/auth.go

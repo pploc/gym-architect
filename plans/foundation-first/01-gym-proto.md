@@ -1,5 +1,7 @@
 # Phase 1 — Harden and Release `gym-proto`
 
+> **Historical contract note:** G1 published the original selected-gym and Member lookup contracts. [Phase 9 Stage 0](09-kong-grpc-gateway-openapi.md#stage-0--replace-selected-gym-jwt-state-before-gateway-generation) removes `SelectGym` and `GetMembershipStatusByUserId`; later G9 stages replace Member/Plans HTTP `8080` targets with Kong transcoding to private gRPC `50051`. Preserve G1 evidence unchanged.
+
 ## Objective
 
 Reach G1 by turning `gym-proto` into an enforced, immutable contract source and publishing matching Java/Go artifacts.

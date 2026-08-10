@@ -1,5 +1,7 @@
 # Phase 6 — Plans Contracts
 
+> **Historical contract note:** G6 froze the selected-gym contract used by G8. [Phase 9 Stage 0](09-kong-grpc-gateway-openapi.md#stage-0--replace-selected-gym-jwt-state-before-gateway-generation) supersedes selected-gym JWT issuance, Identifier-to-Member membership lookup, and request-derived `ADMIN` gym scope. Preserve G6 evidence unchanged.
+
 ## Objective
 
 Reach G6 by freezing and releasing the Plans API and revised Member boundary before either service adopts them.

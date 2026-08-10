@@ -1,8 +1,8 @@
 # Member Service
 
-> **Tech:** Java 26 + Spring Boot 4 | **DB:** PostgreSQL `member_db` | **Ports:** 50051 native gRPC / 8080 HTTP when a service-local gateway exists
+> **Tech:** Java 26 + Spring Boot 4 | **DB:** PostgreSQL `member_db` | **Business port:** 50051 native mTLS gRPC
 >
-> **Roadmap status:** G8 complete. No location/catalog ownership; pending purchases + subscription snapshots; Plans `ResolvePurchasablePlan` + fake Payment completion. Historical G4/G5 evidence is pre-split. G8 evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/`.
+> **Roadmap status:** G8 complete. Phase 9 Stage 0 adds explicit gym-scoped requests and removes Identifier lookup; Kong later exposes public HTTPS/JSON by transcoding to Member `50051`. Historical G4/G5 evidence is pre-split. G8 evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/`.
 
 ## Responsibilities
 
@@ -44,10 +44,10 @@ sequenceDiagram
     participant FP as G8 Fake Payment
     participant KF as Kafka
 
-    C->>MB: PurchaseMembership(plan_id, provider, idempotency_key, discount_code?)
-    MB->>MB: Resolve trusted user, member, selected gym
-    MB->>MB: Reject nonblank discount_code
-    MB->>PL: ResolvePurchasablePlan(plan_id, selected_gym_id) over mTLS
+    C->>MB: POST /api/v1/gyms/{gym_id}/memberships/purchase
+    MB->>MB: Resolve trusted user from Kong metadata and member ownership
+    MB->>MB: Validate request gym_id; reject nonblank discount_code
+    MB->>PL: ResolvePurchasablePlan(gym_id, plan_id) over mTLS
     PL-->>MB: plan_id, gym_id, type, duration_days, price_vnd
     MB->>DB: Create or load PENDING purchase by (user_id, idempotency_key)
     Note over MB,DB: Commit before Payment; stable purchase_id
@@ -63,14 +63,15 @@ sequenceDiagram
 
 Rules:
 
-1. Client supplies `plan_id`, provider, required `idempotency_key`, and optional `discount_code`.
-2. Nonblank discount codes fail until an authoritative discount owner exists.
-3. Plans returns canonical gym and plan terms; client cannot set gym, type, duration, or price.
-4. Member creates or reloads one pending purchase for `(user_id, idempotency_key)` and commits before Payment.
-5. Payment `reference_id` is Member's unique `purchase_id`, never the reusable `plan_id`. Same key reuses the same reference.
-6. Completion must match purchase ID, payment ID, payment type, user, gym, provider expectations, and `amount_vnd`.
-7. Activation and renewal use the frozen record. They never reread Plans.
-8. Processed-event claim and domain work share one TX; no claim release on failure.
+1. Client selects `gym_id` as explicit path/resource context and supplies `plan_id`, provider, required `idempotency_key`, and optional `discount_code` in the body.
+2. Request `gym_id` is intent, not authorization or authoritative catalog data. Member derives user identity from Kong and verifies member ownership.
+3. Nonblank discount codes fail until an authoritative discount owner exists.
+4. Plans validates `(gym_id, plan_id)` and returns canonical terms; client cannot set type, duration, or price.
+5. Member creates or reloads one pending purchase for `(user_id, idempotency_key)` and commits before Payment.
+6. Payment `reference_id` is Member's unique `purchase_id`, never the reusable `plan_id`. Same key reuses the same reference.
+7. Completion must match purchase ID, payment ID, payment type, user, gym, provider expectations, and `amount_vnd`.
+8. Activation and renewal use the frozen record. They never reread Plans.
+9. Processed-event claim and domain work share one TX; no claim release on failure.
 
 A Plans outage before purchase initiation fails closed. A Plans outage or catalog edit after initiation does not change completion behavior.
 
@@ -188,10 +189,6 @@ service MemberService {
   rpc ResumeMembership(ResumeMembershipRequest) returns (ResumeMembershipResponse);
   rpc GetMembershipStatus(GetMembershipStatusRequest) returns (GetMembershipStatusResponse);
 
-  // Identifier only; workload mTLS; no HTTP mapping.
-  rpc GetMembershipStatusByUserId(GetMembershipStatusByUserIdRequest)
-      returns (GetMembershipStatusByUserIdResponse);
-
   // Check-in only; verified SAN; no public HTTP mapping.
   rpc ValidateMembership(ValidateMembershipRequest)
       returns (ValidateMembershipResponse);
@@ -202,13 +199,51 @@ service MemberService {
 }
 ```
 
-Closed vocabularies on the wire are `common.v1` prefixed enums (`MembershipStatus.MEMBERSHIP_STATUS_ACTIVE`, `PlanType.PLAN_TYPE_MONTHLY`, `PaymentType.PAYMENT_TYPE_MEMBERSHIP`). Domain DTOs and JWT claims keep short names. No shared `MemberResponse` / `PurchaseResponse` / `MembershipResponse`.
+Closed vocabularies on the wire are `common.v1` prefixed enums (`MembershipStatus.MEMBERSHIP_STATUS_ACTIVE`, `PlanType.PLAN_TYPE_MONTHLY`, `PaymentType.PAYMENT_TYPE_MEMBERSHIP`). Domain DTOs keep short names. Membership status is not a JWT claim. No shared `MemberResponse` / `PurchaseResponse` / `MembershipResponse`.
 
 G6 removed `GetPlans` and gym-location management/lookup RPCs from Member. G8 Member code and schema match that boundary.
 
-`GetMembershipStatusByUserId` receives both `user_id` and `gym_id`. It returns `NONE` for a known user without a subscription at that gym. Identifier does not guess after an availability failure.
+Phase 9 removes `GetMembershipStatusByUserId` and its top-level messages after deleting Identifier's selected-gym flow. Protobuf cannot reserve RPC or top-level message names, so contract checks prevent their reuse; reserve only removed fields inside retained messages. Delete the handler, mapper, SAN allowlist, and tests.
+
+Every gym-specific public RPC receives validated `gym_id` in its request. Public handlers never call `GrpcSecurityContext.getGymId()`; Kong metadata supplies only verified identity and role.
+
+Purchase uses a nested body so path `gym_id` appears once:
+
+```protobuf
+message PurchaseMembershipBody {
+  string plan_id = 1;
+  string provider = 2;
+  string discount_code = 3;
+  string idempotency_key = 4;
+}
+
+message PurchaseMembershipRequest {
+  string gym_id = 1;
+  PurchaseMembershipBody purchase = 2;
+}
+```
+
+Pause, resume, and gym-scoped status requests carry both `gym_id` and `member_id`. `ListMembersRequest.gym_id` remains the explicit list scope. Preserve existing field validation, including required IDs and idempotency-key bounds.
 
 Aggregate member status is derived from all subscriptions (`ACTIVE` > `PAUSED` > `EXPIRED` > `NONE`). Gym-scoped reads use subscription status, not a blind copy from one gym.
+
+## Public Routes and Authorization
+
+Kong exposes public unary RPCs as HTTPS/JSON and transcodes to Member mTLS gRPC `50051`.
+
+| Method | Path | Policy |
+|---|---|---|
+| `GET` | `/api/v1/members/{member_id}` | customer self; `SUPER_ADMIN` override |
+| `PUT` | `/api/v1/members/{member_id}` | customer self; `SUPER_ADMIN` override |
+| `GET` | `/api/v1/gyms/{gym_id}/members` | `SUPER_ADMIN` only during G9 |
+| `POST` | `/api/v1/gyms/{gym_id}/memberships/purchase` | customer self; body retains plan, provider, discount, idempotency fields |
+| `POST` | `/api/v1/gyms/{gym_id}/members/{member_id}/membership:pause` | customer self |
+| `POST` | `/api/v1/gyms/{gym_id}/members/{member_id}/membership:resume` | customer self |
+| `GET` | `/api/v1/gyms/{gym_id}/members/{member_id}/membership` | customer self; `SUPER_ADMIN` override |
+
+No authoritative `ADMIN`-to-gym assignment exists. Request `gym_id` cannot grant administrative access. Restore gym-scoped `ADMIN` only after a separate assignment owner, persistence model, revocation contract, lookup API, and tests exist.
+
+Member list and status filters continue using Spring Data JPA `Specification` composition through `JpaSpecificationExecutor`; do not add custom persistence queries.
 
 ## Workload Security
 
@@ -216,7 +251,6 @@ SAN → method matrix:
 
 | Peer SAN | Allowed method |
 |----------|----------------|
-| `ms-gym-identifier` | `GetMembershipStatusByUserId` |
 | `ms-gym-checkin` | `ValidateMembership` |
 | `ms-gym-notification` | `ListMembersByStatus` |
 | `kong` | all end-user ROLE_RESTRICTED methods |
@@ -224,7 +258,7 @@ SAN → method matrix:
 - Member may call only Plans `ResolvePurchasablePlan` using its own certificate and independent client configuration.
 - Internal methods have no HTTP mapping or Kong route.
 - End-user claim headers are accepted only from Kong SAN; internal certs cannot forge them.
-- NetworkPolicy admits gRPC only from Kong + Identifier + Check-in + Notification.
+- NetworkPolicy admits gRPC only from Kong, Check-in, and Notification on caller-specific rules. Identifier has no Member edge after Stage 0.
 
 ## Deferred Check-in Boundary
 

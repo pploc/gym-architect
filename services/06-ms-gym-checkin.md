@@ -121,7 +121,7 @@ sequenceDiagram
     end
 ```
 
-Trusted authentication must resolve the authoritative member identity. Client-supplied `member_id` is never sufficient by itself.
+Trusted authentication must resolve authoritative member identity from stable JWT `sub`; JWT contains no gym or membership state. Client-supplied `member_id` or `gym_id` is never sufficient by itself. Request gym must match signed QR gym, and Member supplies live membership validity.
 
 ## Future Data Model
 
@@ -165,12 +165,12 @@ Redis may cache only short-lived derived current/next payloads. YugabyteDB and t
 | RPC | HTTP | Authentication | Status |
 |---|---|---|---|
 | `ProcessScan` | `POST /api/v1/checkin/scan` | Member JWT | Deferred |
-| `GetCheckInHistory` | `GET /api/v1/checkin/history/{member_id}` | Scoped Member/Admin JWT | Deferred |
-| `GetDailyCount` | `GET /api/v1/checkin/daily-count` | Admin JWT | Deferred |
-| `RegisterDevice` | `POST /api/v1/checkin/devices` | Admin JWT | Blocked on future Plans contract |
+| `GetCheckInHistory` | `GET /api/v1/checkin/history/{member_id}` | Customer self or `SUPER_ADMIN` | Deferred |
+| `GetDailyCount` | `GET /api/v1/checkin/daily-count` | `SUPER_ADMIN` until staff assignment exists | Deferred |
+| `RegisterDevice` | `POST /api/v1/checkin/devices` | `SUPER_ADMIN` until staff assignment exists | Blocked on future Plans contract |
 | `GetDisplayQrPayload` | `GET /api/v1/checkin/display/qr` | Device credential | Deferred |
-| `RevokeDevice` | `DELETE /api/v1/checkin/devices/{device_id}` | Admin JWT | Deferred |
-| `RotateGymQrRootKey` | `POST /api/v1/checkin/gyms/{gym_id}/qr-root-key:rotate` | Admin JWT | Blocked on future Plans contract |
+| `RevokeDevice` | `DELETE /api/v1/checkin/devices/{device_id}` | `SUPER_ADMIN` until staff assignment exists | Deferred |
+| `RotateGymQrRootKey` | `POST /api/v1/checkin/gyms/{gym_id}/qr-root-key:rotate` | `SUPER_ADMIN` until staff assignment exists | Blocked on future Plans contract |
 
 Kong strips client-supplied trusted user headers before injecting validated claims. Display routes receive no user claims and authenticate inside Check-in. Outbound Member calls use Check-in client certificate SAN `ms-gym-checkin` only; Member does not accept a `CHECKIN_SERVICE` role claim.
 

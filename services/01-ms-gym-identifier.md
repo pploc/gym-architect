@@ -2,18 +2,18 @@
 
 > **Tech:** Go | **DB:** PostgreSQL `identity_db` | **Ports:** 50051 native gRPC / 8080 HTTP
 >
-> **Roadmap status:** G8 complete. Independent `PlansClient` (`GetActiveGym`) and `MemberClient` (membership only); `SelectGym` is Plans-first then Member, fail-closed. Historical G5 evidence records the earlier Member-only gym-validation path. G8 evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/`.
+> **Roadmap status:** G8 remains historical. Phase 9 Stage 0 removes selected-gym token issuance and Identifier's Member dependency before Kong/OpenAPI generation.
 
 ## Responsibilities
 
 - User registration with email/password or Google OAuth2
-- Email verification; password reset remains deferred until its API contract is frozen
-- JWT access tokens, refresh-token rotation, logout, and Redis-backed revocation
+- Email verification; password reset remains deferred until contract freeze
+- Stable identity JWT access tokens, refresh rotation, logout, and Redis-backed revocation
 - Roles: `CUSTOMER`, `TRAINER`, `ADMIN`, `SUPER_ADMIN`
 - User suspension and identity events
-- Selected-gym token issuance after authoritative downstream checks
+- Active-gym validation for current `SUPER_ADMIN` trainer-account creation
 
-Identifier owns identity and credentials. It does not own gym locations, membership plans, member profiles, or subscriptions.
+Identifier owns identity and credentials. It does not own gym locations, membership plans, member profiles, subscriptions, membership state, or staff-to-gym assignment.
 
 ## Data Model
 
@@ -47,11 +47,9 @@ erDiagram
     USERS ||--o{ REFRESH_TOKENS : has
 ```
 
-There is no `users.gym_id` foreign key. Gym selection is request/token context. Any `gym_id`, `member_id`, or `plan_id` crossing a service boundary is an opaque string, never a cross-service database FK.
+There is no `users.gym_id`. Gym selection belongs to frontend URL/request context. Cross-service IDs are opaque strings and never cross-service database foreign keys.
 
-## Registration and Gym-Neutral Tokens
-
-Public registration always creates a `CUSTOMER` in `PENDING_VERIFICATION`. Elevated roles require protected administration or controlled out-of-band provisioning.
+## Registration and Stable Tokens
 
 ```mermaid
 sequenceDiagram
@@ -71,41 +69,7 @@ sequenceDiagram
     KF-->>MB: Create gym-neutral member shell
 ```
 
-Local verification tokens are generated with cryptographically secure randomness, stored only as SHA-256 hashes, expire after the configured TTL, and are single use. Google accounts begin active after Google token verification.
-
-Login, Google login, email verification, and refresh issue gym-neutral access tokens:
-
-- no `gym_id` claim;
-- `membership_status=NONE`;
-- 15-minute access-token TTL;
-- rotating opaque refresh token stored as a hash.
-
-## Pending Selected-Gym Flow
-
-`POST /api/v1/auth/gym` is the only membership-aware issuance path.
-
-```mermaid
-sequenceDiagram
-    participant C as Authenticated customer
-    participant K as Kong
-    participant ID as Identifier
-    participant PL as Plans
-    participant MB as Member
-
-    C->>K: POST /api/v1/auth/gym {gym_id}
-    K->>ID: SelectGym with verified user claims
-    ID->>PL: GetActiveGym(gym_id) over mTLS
-    PL-->>ID: Canonical active gym
-    ID->>MB: GetMembershipStatusByUserId(user_id, gym_id) over mTLS
-    MB-->>ID: NONE | ACTIVE | PAUSED | EXPIRED
-    ID-->>C: Selected-gym JWT
-```
-
-Identifier calls Plans first, then Member. A missing or closed gym, membership lookup failure, authorization failure, timeout, or TLS failure prevents token issuance. Identifier never guesses a membership state.
-
-Plans and Member use independent targets, deadlines, CA bundles, client certificates, clients, and close lifecycles. Workload identity comes from verified mTLS. Identifier never forwards or forges `x-user-id`, `x-user-role`, `x-gym-id`, or `x-membership-status` as service credentials.
-
-The selected-gym token includes the selected gym and Member's returned status. Clients call `SelectGym` again after a membership change.
+Registration, verification, login, Google login, and refresh issue the same stable identity token:
 
 ```json
 {
@@ -116,32 +80,49 @@ The selected-gym token includes the selected gym and Member's returned status. C
   "exp": 1700000000,
   "jti": "access-token-id",
   "kid": "key-id-2026-08",
-  "role": "CUSTOMER",
-  "gym_id": "opaque-gym-id",
-  "membership_status": "ACTIVE"
+  "role": "CUSTOMER"
 }
 ```
 
-JWT uses RS256. Kong validates algorithm, signature, issuer, audience, `iat`, `exp`, `jti`, and `kid` before replacing trusted headers with validated claims. Current and previous public keys overlap for at least the maximum access-token TTL. Production private keys remain in a secret manager.
+Tokens contain no `gym_id` and no `membership_status`. Clients query Member for live membership state. Selecting a gym does not call Identifier and does not issue another token.
+
+JWT uses RS256. Kong validates algorithm, signature, issuer, audience, `iat`, `exp`, `jti`, and `kid` before replacing trusted headers with verified identity/role metadata. Current and previous public keys overlap for at least maximum access-token TTL. Production private keys stay in a secret manager.
+
+## Removed Selected-Gym Boundary
+
+Phase 9 Stage 0 removes:
+
+- `SelectGym` RPC and `POST /api/v1/auth/gym`;
+- selected-gym signing branch and tests;
+- Identifier Member client port/adapter;
+- Member target, deadline, client certificate, key, and CA configuration;
+- startup and shutdown wiring;
+- Identifier-to-Member NetworkPolicy and mTLS permission.
+
+After its only caller disappears, Member `GetMembershipStatusByUserId` and its top-level messages are removed in the coordinated contract break. Protobuf cannot reserve RPC or top-level message names, so contract checks prevent their reuse; field numbers/names are reserved only inside retained messages where fields are removed. No compatibility forwarding is needed because there is no production client or customer data.
 
 ## Trainer Administration Boundary
 
-Identifier owns trainer credentials and the `TRAINER` role. In the pending split, `CreateTrainerAccount` validates the requested active gym through Plans `GetActiveGym`, not Member. Creating a trainer profile in the deferred Trainer service is separate work.
+Identifier currently validates `CreateTrainerAccount.gym_id` through Plans `GetActiveGym` over Identifier mTLS. Therefore Identifier's Plans client remains after customer `SelectGym` removal.
+
+No authoritative staff-to-gym assignment model exists and Identifier does not persist gym assignment. During G9, `CreateTrainerAccount` is `SUPER_ADMIN`-only. Restoring gym-scoped `ADMIN` creation requires a separate staff-assignment owner, persistence, revocation, read contract, and tests.
+
+Trainer profile creation remains deferred to Trainer service.
 
 ## Logout and Suspension
 
-Logout hashes the access token and stores `blacklist:{token_hash}` in Redis until the token expires. Refresh tokens are revoked in PostgreSQL.
+Logout hashes access token and stores `blacklist:{token_hash}` in Redis until expiration. Refresh tokens are revoked in PostgreSQL.
 
 Suspension:
 
-1. marks the user `SUSPENDED`;
+1. marks user `SUSPENDED`;
 2. revokes active refresh tokens;
 3. publishes `identity.user.suspended.v1`;
-4. lets downstream owners apply their own state changes idempotently.
+4. lets downstream owners apply state changes idempotently.
 
 ## Kafka Events
 
-Identity event contracts are gym-neutral. Their prior `gym_id` fields are reserved and must not appear in examples or payload construction.
+Identity events remain gym-neutral. Prior `gym_id` fields remain reserved.
 
 | Topic | Key | Payload |
 |---|---|---|
@@ -150,7 +131,7 @@ Identity event contracts are gym-neutral. Their prior `gym_id` fields are reserv
 | `identity.user.suspended.v1` | `user_id` | `{user_id, role, timestamp}` |
 | `identity.email.verification-requested.v1` | `user_id` | `{user_id, email, full_name, verification_url, expires_at, timestamp}` |
 
-`verification_url` contains secret token material. Topic ACLs must restrict it, and consumers must never log it.
+`verification_url` contains secret token material. Restrict topic ACLs and never log it.
 
 ## API
 
@@ -169,28 +150,25 @@ service IdentityService {
   rpc Logout(LogoutRequest) returns (LogoutResponse);
   rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
   rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
-  rpc SelectGym(SelectGymRequest) returns (SelectGymResponse);
 
-  // Admin
+  // SUPER_ADMIN during G9
   rpc CreateTrainerAccount(CreateTrainerAccountRequest) returns (CreateTrainerAccountResponse);
   rpc SuspendUser(SuspendUserRequest) returns (SuspendUserResponse);
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
 }
 ```
 
-Wire JSON (gateway `UseProtoNames: true`) uses closed enums with full proto names, for example `status: "USER_STATUS_PENDING_VERIFICATION"` and `membership_status: "MEMBERSHIP_STATUS_NONE"`. Domain/JWT/DB keep short names (`PENDING_VERIFICATION`, `NONE`); map only at the wire boundary. Every RPC has unique request/response messages (no shared `AuthResponse` / `Empty`).
-
-Public methods are Register, Login, Google Login, Refresh, VerifyEmail, and ResendEmailVerification. Logout, `SelectGym`, and all administration methods are protected.
+`SelectGym` is absent. Closed enums use full Protobuf names on wire; domain/JWT/DB retain short names.
 
 ## Authorization Summary
 
-| Operation | Customer | Trainer | Admin |
-|---|:---:|:---:|:---:|
-| Login, refresh, verification | Public | Public | Public |
-| Logout, current user, change password | Yes | Yes | Yes |
-| Select gym | Yes | No | No |
-| Create trainer account | No | No | Yes |
-| Suspend/list users | No | No | Yes |
+| Operation | Customer | Trainer | Admin | Super admin |
+|---|:---:|:---:|:---:|:---:|
+| Login, refresh, verification | Public | Public | Public | Public |
+| Logout, current user, change password | Yes | Yes | Yes | Yes |
+| Select gym | Client state; no Identifier RPC | Client state | Client state | Client state |
+| Create trainer account | No | No | No | Yes |
+| Suspend/list users | No | No | No | Yes |
 
 ## Target Internal Structure
 
@@ -202,7 +180,6 @@ internal/
 │   └── port/
 │       ├── user_repository.go
 │       ├── token_repository.go
-│       ├── member_client.go
 │       ├── plans_client.go
 │       └── event_publisher.go
 ├── adapter/
@@ -210,9 +187,8 @@ internal/
 │   ├── repository/
 │   ├── security/
 │   ├── kafka/
-│   ├── member/       # GetMembershipStatusByUserId
-│   └── plans/        # GetActiveGym
+│   └── plans/        # GetActiveGym for trainer validation
 └── config/
 ```
 
-Split-client path is implemented and covered by unit tests plus G8 E2E (`run-g8.sh`).
+There is no Member adapter or selected-gym use case after Stage 0.

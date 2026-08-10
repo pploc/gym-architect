@@ -14,6 +14,8 @@ contract freeze
   -> Plans contracts
   -> ms-gym-plans
   -> Identifier + Member + Plans integration
+  -> stable identity + explicit gym resource context
+  -> Kong gRPC-Gateway + generated OpenAPI 3.0
 ```
 
 Only Identifier, Member, and Plans are active service scope. Other service documents are catalog-only until a later roadmap explicitly opens them.
@@ -25,9 +27,10 @@ Only Identifier, Member, and Plans are active service scope. Other service docum
 - G6: Plans/Member/Payment contracts first published as historical `v3.0.0` / `gym-proto-java:3.0.0` / `proto-go/v3@v3.0.0`.
 - G7: passed. Plans owns locations/catalog; evidence under `docs/evidence/foundation-first/g7/local-2026-08-09/`.
 - G8: passed on prior contract generation; evidence under `docs/evidence/foundation-first/g8/local-2026-08-09/`. Owner approval remains pending.
-- **Active contract break (post-G8, in place on `*.v1`):** Java `gym-proto-java:4.0.0`, Go module `github.com/pploc/proto-go` (no `/v4` path), `common-go` 0.4.0, `common-java` 2.1.0. RPC-specific messages, prefixed closed enums, Protovalidate. Kafka topics stay `.v1` and overwrite Schema Registry subjects in place (no dual `.v2` generation). Re-run `./kong/run-g8.sh` after published/staged service images resolve the new coordinates; prior G8 evidence stays historical.
+- G9: planned. Stage 0 removes selected-gym JWT state and makes gym context explicit before Kong routes are generated. Later stages expose Member and Plans unary CRUD as HTTPS/JSON, transcode to upstream mTLS gRPC, publish generated OpenAPI 3.0, and retain Plans `8080` only for Actuator.
+- **Active contract break (post-G8, in place on `*.v1`):** Java `gym-proto-java:4.1.0`, Go module `github.com/pploc/proto-go` (no `/v4` path), `common-go` 0.4.0, `common-java` 2.1.1. RPC-specific messages, prefixed closed enums, Protovalidate. Kafka topics stay `.v1` and overwrite Schema Registry subjects in place (no dual `.v2` generation). Plans still resolves `gym-proto-java:4.0.0` and must align before G9. Re-run `./kong/run-g8.sh` after published/staged service images resolve one generation; prior G8 evidence stays historical.
 
-G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 revised that boundary; G8 evidence supersedes G5 for location validation and catalog ownership. Member external HTTP remains intentionally unexposed.
+G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 revised that boundary; G8 evidence supersedes G5 for location validation and catalog ownership. Member has no native public HTTP adapter; Phase 9 exposes its public gRPC methods as HTTPS/JSON through Kong.
 
 No customer or production data exists. Phases 6–8 use a coordinated contract and schema reset. Do not add migration, backfill, compatibility forwarding, dual-write, or rollback machinery for disposable pre-production data.
 
@@ -42,6 +45,7 @@ No customer or production data exists. Phases 6–8 use a coordinated contract a
 7. [Phase 6 — Plans contracts](06-plans-contracts.md)
 8. [Phase 7 — `ms-gym-plans`](07-ms-gym-plans.md)
 9. [Phase 8 — Three-service integration](08-three-service-integration.md)
+10. [Phase 9 — Stable identity, Kong gRPC-Gateway, and generated OpenAPI 3.0](09-kong-grpc-gateway-openapi.md)
 
 Each phase is an implementation handoff. Execute it only after prerequisites pass and preserve evidence for next gate.
 
@@ -50,7 +54,8 @@ Each phase is an implementation handoff. Execute it only after prerequisites pas
 | Boundary | Identifier | Member | Plans |
 |---|:---:|:---:|:---:|
 | Users, credentials, JWTs | owner | — | — |
-| Selected-gym token | owner | membership lookup | active-gym lookup |
+| Stable identity JWT | owner | — | — |
+| Customer-selected gym context | — | validates request ownership and membership | validates gym, plan, and purchasable terms |
 | Member profile | — | owner | — |
 | Subscription and lifecycle | — | owner | — |
 | Gym location | opaque reference | opaque reference | owner |
@@ -61,16 +66,17 @@ Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-ne
 
 ## Governing rules
 
-1. `gym-proto` owns API/event schemas, auth vocabulary, error mappings, topic rules, and generated artifacts.
+1. `gym-proto` owns API/event schemas, auth vocabulary, error mappings, topic rules, canonical OpenAPI 3.0 generated directly from Protobuf, and other generated artifacts.
 2. Common libraries own shared trusted-claim, workload-auth, observability, Kafka framing, retry, commit, and DLQ behavior.
-3. Kong establishes external JWT trust. User roles and workload identities remain separate trust domains.
+3. Kong establishes external stable-JWT trust and injects identity/role only. User roles and workload identities remain separate trust domains.
 4. Identifier owns identity, Member owns subscriptions, and Plans owns locations/catalog.
 5. Member orchestrates membership purchase and obtains trusted terms from Plans. Client input never supplies authoritative price, type, or duration.
 6. Member stores purchased terms on subscription. Later catalog edits affect only later purchases.
 7. Plans V1 has no Kafka producer, consumer, topic, outbox, or cache.
 8. Releases are immutable and tag-derived. Technical pass and owner approval remain separate.
-9. No custom persistence queries for Plans filters; compose Spring Data JPA Specifications.
-10. No work for deferred services unless needed to preserve an explicit boundary reference.
+9. Customer gym selection is explicit request resource context, not JWT state or authorization proof.
+10. No custom persistence queries for Plans or Member filters; compose Spring Data JPA Specifications.
+11. No work for deferred services unless needed to preserve an explicit boundary reference.
 
 ## Readiness gates
 
@@ -85,10 +91,11 @@ Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-ne
 | G6 — Plans contracts | Plans API and revised Member boundary are immutable | Buf checks, break report, artifacts, exposure/auth matrices |
 | G7 — Plans service | Plans behavior, schema, security, and deployment pass | Tests, migration report, API fixtures, image/Helm evidence |
 | G8 — Three-service integration | Identifier, Member, and Plans pass clean-boundary E2E | Three-service tests, schema inspection, mTLS and Kong evidence |
+| G9 — Browser API gateway | Kong HTTPS/JSON transcoding, generated OpenAPI 3.0, upstream mTLS, and removal of Plans business HTTP pass | Contract artifacts, route/exposure matrix, browser E2E, error compatibility matrix, mTLS and NetworkPolicy evidence |
 
 ## Active-scope freeze
 
-G8 closed Identifier/Member/Plans. Do not start implementation phases for Payment, Check-in, Workout, Trainer, Promotion, Notification, or Analytics until a later roadmap gate. Their docs may be corrected only to preserve Identifier/Member/Plans boundaries.
+G8 closed Identifier/Member/Plans business ownership. Phase 9 reopens only their public gateway, transport trust, generated contract artifacts, and Plans HTTP-adapter boundary. Do not start implementation phases for Payment, Check-in, Workout, Trainer, Promotion, Notification, or Analytics until a later roadmap gate. Their docs may be corrected only to preserve Identifier/Member/Plans boundaries.
 
 Allowed repositories for Phases 6–8 (historical scope list):
 

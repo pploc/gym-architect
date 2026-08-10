@@ -1,24 +1,23 @@
 # Infrastructure Architecture
 
-> **Roadmap status:** G8 additive topology implemented and proven by `gym-infra/kong/run-g8.sh` (`RUN_EXIT:0`). Evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/`. G5 compose files and evidence remain historical pre-split artifacts.
+> **Roadmap status:** G8 topology and evidence remain historical. Phase 9 Stage 0 removes selected-gym JWT state and Identifier-to-Member customer lookup before Kong gRPC-Gateway/OpenAPI 3.0 cutover.
 
-## G8 Topology
+## Phase 9 Target Topology
 
 ```mermaid
 flowchart TB
-    Client[Clients] -->|HTTPS| Kong[Kong]
+    Client[Browser clients] -->|HTTPS JSON + stable JWT| Kong[Kong 3.8]
     Kong -->|HTTP 8080| ID[Identifier]
-    Kong -->|HTTP 8080| PL[Plans]
+    Kong -->|gRPC-Gateway + mTLS 50051| MB[Member]
+    Kong -->|gRPC-Gateway + mTLS 50051| PL[Plans]
 
-    ID -->|mTLS 50051: GetActiveGym| PL
-    ID -->|mTLS 50051: GetMembershipStatusByUserId| MB[Member]
+    ID -->|mTLS 50051: GetActiveGym for trainer validation| PL
     MB -->|mTLS 50051: ResolvePurchasablePlan| PL
     MB -->|fixture protocol| FP[G8 Fake Payment]
 
     ID --> IDDB[(identity_db)]
     MB --> MBDB[(member_db)]
     PL --> PLDB[(plans_db)]
-
     ID --> Redis[(Redis)]
     ID --> Kafka[[Kafka]]
     MB --> Kafka
@@ -26,9 +25,7 @@ flowchart TB
     Kafka --> SR[Schema Registry]
 ```
 
-G8 scope includes Identifier, Member, Plans, Kong, three isolated PostgreSQL databases, Redis, Kafka/Schema Registry for Identifier and Member contracts, and a fake Payment fixture. Payment fixture publishes test completion events only; it is not a production Payment deployment.
-
-Plans V1 has no Kafka, Schema Registry, Redis, outbox, scheduler, or Payment dependency.
+There is no Identifier-to-Member runtime edge after Stage 0. Fake Payment remains test infrastructure, not production Payment.
 
 ## Database Isolation
 
@@ -38,57 +35,98 @@ Plans V1 has no Kafka, Schema Registry, Redis, outbox, scheduler, or Payment dep
 | `member_db` | Member | members, subscriptions, pending purchases, outbox, processed events |
 | `plans_db` | Plans | gym locations, membership plans |
 
-Only Plans owns catalog tables. Member stores opaque `gym_id` and `plan_id` plus plan type, duration, and VND price snapshots. Identifier owns no Member or Plans table. No cross-service database FK or join is allowed.
-
-Local G5 and G8 compose both use PostgreSQL database name `gym_member` for Member (ownership rules match target `member_db` naming in architecture docs). Catalog tables live only in `plans_db`.
+Only Plans owns catalog tables. Member stores opaque IDs and frozen purchased terms. Identifier stores no gym assignment. No cross-service DB FK or join is allowed.
 
 ## Kong Routes
 
-External REST/JSON routes target service-local HTTP listeners on `8080`. Native workload gRPC on `50051` is not exposed by path routing.
+Identifier retains its existing HTTP gateway on `8080`. Member and Plans public unary APIs use Kong's bundled `grpc-gateway` plugin against `grpcs` upstreams.
 
 ```yaml
 services:
   - name: ms-gym-identifier-http
     url: http://ms-gym-identifier.gym-system.svc.cluster.local:8080
     routes:
-      - name: identifier-auth
-        paths: ["/api/v1/auth"]
+      # Generate exact method + regex entries for the 12 Identity operations.
+      # Never proxy the broad /api/v1/auth or /api/v1 paths.
+      - name: identifier-register
+        methods: [POST]
+        paths: ["~/api/v1/auth/register$"]
 
-  - name: ms-gym-plans-http
-    url: http://ms-gym-plans.gym-system.svc.cluster.local:8080
+  - name: ms-gym-member-grpc-json
+    protocol: grpcs
+    host: ms-gym-member.gym-system.svc.cluster.local
+    port: 50051
+    client_certificate:
+      id: ${KONG_CLIENT_CERTIFICATE_ID}
+    tls_verify: true
+    ca_certificates: [${UPSTREAM_CA_ID}]
     routes:
-      - name: plans-public
-        paths: ["/api/v1/gyms", "/api/v1/plans"]
+      - name: member-public-json
+        protocols: [https]
+        # Generated exact method + regex allowlist for seven Member operations.
+        # Never claim the broad /api/v1/gyms prefix.
+        plugins:
+          - name: grpc-gateway
+            config:
+              proto: /usr/local/kong/proto/member/v1/member.proto
+
+  - name: ms-gym-plans-grpc-json
+    protocol: grpcs
+    host: ms-gym-plans.gym-system.svc.cluster.local
+    port: 50051
+    client_certificate:
+      id: ${KONG_CLIENT_CERTIFICATE_ID}
+    tls_verify: true
+    ca_certificates: [${UPSTREAM_CA_ID}]
+    routes:
+      - name: plans-public-json
+        protocols: [https]
+        # Generated exact method + regex allowlist for eight Plans operations.
+        # Member membership paths below /api/v1/gyms must never match.
+        plugins:
+          - name: grpc-gateway
+            config:
+              proto: /usr/local/kong/proto/plans/v1/plans.proto
 ```
 
-Plans management and read routes use the authentication/authorization matrix frozen in [Phase 6](../plans/foundation-first/06-plans-contracts.md). `GetActiveGym` and `ResolvePurchasablePlan` have no HTTP mapping and no Kong route.
+Generate exact method-plus-regex entries for all 12 Identity, seven Member, and eight Plans operations from the frozen contract. Broad `/api/v1/auth`, `/api/v1`, and `/api/v1/gyms` prefix routes are forbidden. Member and Plans share `/api/v1/gyms`, so membership and catalog paths must select only their owning backend. Unknown paths, wrong methods, and cross-backend matches return route-level `404`. Public proxy routes are HTTPS-only; any port-80 route redirects and never proxies Bearer traffic. Internal RPCs and reflection have no Kong route.
 
-Member must not be given an external route until a real service-local HTTP adapter exists (Spring MVC for Java services, matching Plans). G8 may prove Member purchase behavior over an internal/test path without routing HTTP to raw native gRPC.
+Kong 3.8 reads annotated `.proto` source from local filesystem. It does not consume external HTTP YAML, descriptor sets, reflection, Swagger, or OpenAPI. Mount the released runtime Protobuf bundle read-only.
 
-Kong must strip client-provided copies of `x-user-id`, `x-user-role`, `x-gym-id`, `x-membership-status`, and tracing trust headers before injecting validated claims. Workload calls never forward those headers as credentials.
+## Stable JWT and Trusted Metadata
+
+Identifier JWT contains token-control fields plus `sub` and `role`; no `gym_id` or `membership_status`.
+
+Kong must:
+
+1. validate signature, issuer, audience, time, JTI, key ID, and revocation;
+2. strip client copies of trusted headers on every route;
+3. inject only verified user identity and role metadata;
+4. stop requiring or injecting `x-gym-id` and `x-membership-status`;
+5. let HTTP path binding populate Protobuf `gym_id`.
+
+Member and Plans accept public metadata only when peer certificate SAN is Kong. A caller-selected path gym is request context, not a trusted claim or authorization proof.
 
 ## Workload mTLS Matrix
 
-| Caller certificate | Destination | Allowed method | Public HTTP |
+| Caller certificate | Destination | Allowed method | Public HTTP/OpenAPI |
 |---|---|---|---|
 | `ms-gym-identifier` | Plans | `GetActiveGym` | No |
-| `ms-gym-identifier` | Member | `GetMembershipStatusByUserId` | No |
 | `ms-gym-member` | Plans | `ResolvePurchasablePlan` | No |
+| `ms-gym-checkin` | Member | `ValidateMembership` | No; deferred caller |
+| `ms-gym-notification` | Member | `ListMembersByStatus` | No; deferred caller |
+| `kong` | Member | declared public methods only | Yes |
+| `kong` | Plans | declared public methods only | Yes |
 
-Plans must reject swapped identities: Identifier cannot resolve purchasable plans and Member cannot call active-gym lookup. Missing, invalid, untrusted, or wrong-server certificates fail closed.
-
-Workload identity proves the calling service. It is not an end-user `CUSTOMER`, `TRAINER`, `ADMIN`, or `SUPER_ADMIN` role.
+`GetMembershipStatusByUserId` and Identifier-to-Member mTLS are removed in Stage 0. Workload identity proves calling service, never an end-user role.
 
 ## NetworkPolicy Targets
 
-Member gRPC ingress permits Identifier for membership lookup. Future Check-in ingress is deferred and not needed by G8.
+Policies must separate peers by destination port. Do not union all callers into one broad rule.
+
+Member `50051` permits Kong and exact deferred workload callers. Identifier is absent:
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: ms-gym-member-grpc
-  namespace: gym-system
 spec:
   podSelector:
     matchLabels:
@@ -98,20 +136,25 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app: ms-gym-identifier
+              app: kong
+      ports:
+        - protocol: TCP
+          port: 50051
+    - from:
+        - podSelector:
+            matchLabels:
+              app: ms-gym-checkin
+        - podSelector:
+            matchLabels:
+              app: ms-gym-notification
       ports:
         - protocol: TCP
           port: 50051
 ```
 
-Plans separates public HTTP ingress from native gRPC ingress:
+Plans `50051` permits Kong, Identifier, and Member. Kong has no business access to `8080`:
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: ms-gym-plans-ingress
-  namespace: gym-system
 spec:
   podSelector:
     matchLabels:
@@ -122,10 +165,6 @@ spec:
         - podSelector:
             matchLabels:
               app: kong
-      ports:
-        - protocol: TCP
-          port: 8080
-    - from:
         - podSelector:
             matchLabels:
               app: ms-gym-identifier
@@ -135,49 +174,22 @@ spec:
       ports:
         - protocol: TCP
           port: 50051
+    - from:
+        - podSelector:
+            matchLabels:
+              access: health-observer
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 9090
 ```
 
-NetworkPolicy narrows network reachability; method authorization still comes from verified mTLS identity inside Plans.
+Method authorization remains exact SAN enforcement inside each gRPC server. NetworkPolicy alone is insufficient.
 
-No Check-in-to-Plans ingress is allowed. Plans V1 has no Check-in-authorized method. Future kiosk provisioning requires a later contract and policy update. Future Check-in-to-Member `ValidateMembership` is likewise deferred outside G8.
+## Service Configuration
 
-## Plans Deployment Target
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: ms-gym-plans
-  namespace: gym-system
-spec:
-  selector:
-    matchLabels:
-      app: ms-gym-plans
-  template:
-    metadata:
-      labels:
-        app: ms-gym-plans
-    spec:
-      containers:
-        - name: plans
-          image: ghcr.io/pploc/ms-gym-plans:${IMAGE_TAG}
-          ports:
-            - name: grpc
-              containerPort: 50051
-            - name: http
-              containerPort: 8080
-            - name: metrics
-              containerPort: 9090
-          env:
-            - name: SPRING_DATASOURCE_URL
-              value: jdbc:postgresql://postgres:5432/plans_db
-            - name: GRPC_TLS_ENABLED
-              value: "true"
-```
-
-Plans configuration deliberately contains no Kafka brokers, Schema Registry URL, Redis host, Payment target, or scheduler setting.
-
-Identifier and Member require independent downstream configuration:
+Identifier retains only Plans downstream settings:
 
 ```text
 Identifier:
@@ -186,11 +198,6 @@ Identifier:
   PLANS_GRPC_CA
   PLANS_GRPC_CERT
   PLANS_GRPC_KEY
-  MEMBER_GRPC_TARGET
-  MEMBER_GRPC_DEADLINE
-  MEMBER_GRPC_CA
-  MEMBER_GRPC_CERT
-  MEMBER_GRPC_KEY
 
 Member:
   PLANS_GRPC_TARGET
@@ -200,45 +207,67 @@ Member:
   PLANS_GRPC_KEY
 ```
 
-Secret values belong in Kubernetes Secrets or a secret manager, never committed environment files.
+Remove Identifier `MEMBER_GRPC_*` settings, Member-client certificate permission, and dependency ordering after Stage 0. Retain Identifier client certificate because it still calls Plans.
 
-## G8 Compose and Evidence
+Secrets and production private keys belong in Kubernetes Secrets or secret manager, never committed configuration.
 
-G8 infrastructure is additive under `gym-infra`; it must not overwrite G5 fixtures. Planned components:
+## Plans Deployment
 
-- clean PostgreSQL instances/databases for Identifier, Member, and Plans;
-- Redis;
-- Kafka and Schema Registry;
-- Identifier, Member, and Plans;
-- Kong;
-- a minimal fake Payment fixture;
-- separate Plans server, Identifier client, Member client, and negative-test certificates.
+Plans keeps:
 
-Gym locations and plans are created through Plans public API, not SQL inserted into Member. Evidence inspects all three databases to prove ownership and verifies that Plans starts without messaging/cache configuration.
+- `50051` for business gRPC;
+- `8080` for Actuator health/readiness only;
+- `9090` for metrics if configured;
+- no Kafka, Schema Registry, Redis, Payment, or scheduler settings.
+
+Required negative proof:
+
+```text
+Direct Plans :8080/api/v1/gyms returns 404.
+Kong HTTPS /api/v1/gyms reaches Plans gRPC :50051.
+Actuator health on :8080 remains available to approved observers.
+```
+
+## Generated Contract Deployment
+
+Version-lock:
+
+```text
+Kong image and declarative config
+Kong runtime proto bundle + SHA-256
+Member and Plans gym-proto artifact versions
+Canonical OpenAPI 3.0 + SHA-256
+```
+
+`gym-proto` generates canonical OpenAPI 3.0 directly from annotated Protobuf with `protoc-gen-openapiv3` pinned to a reviewed tag and commit. Its exact operation allowlist contains 12 Identity, seven Member, and eight Plans browser operations; deferred and workload RPCs remain absent. Frontend consumes released OpenAPI 3.0. Kong consumes only released Protobuf source bundle for Member/Plans transcoding; Identifier remains a native HTTP upstream.
+
+Reject deployment when contract generations differ.
+
+## G9 Evidence
+
+Create new G9 fixtures and evidence instead of rewriting G8 proof. Record:
+
+- repository SHAs and artifact versions;
+- stable JWT claim fixture;
+- removed `/api/v1/auth/gym` and dead-RPC proof;
+- route and OpenAPI operation matrices;
+- Kong client certificate subject/SAN and upstream verification;
+- positive and negative SAN/method tests;
+- port-specific rendered NetworkPolicies;
+- real HTTPS/JSON purchase flow through Kong;
+- direct Plans `8080 /api/**` negative and Actuator positive checks;
+- error status/header/body compatibility including browser-visible `x-error-code`.
 
 ## Deferred Check-in Infrastructure
 
-Check-in route, deployment, QR-key KMS, Redis payload cache, and YugabyteDB remain future catalog infrastructure. No G8 topology should imply that Check-in calls Member for location data or that Check-in can call Plans. See the [deferred Check-in specification](../services/06-ms-gym-checkin.md).
+Check-in remains catalog-only. Future scan processing uses stable end-user identity and exact Check-in SAN to Member `ValidateMembership(member_id, gym_id)`. Kiosk provisioning still requires a separately frozen Check-in-to-Plans contract. No selected-gym JWT or JWT membership state is used.
 
 ## CI/CD Repository Model
 
-Repositories run their own CI or reuse workflows from `gym-infra`:
-
-- `gym-proto`: Buf format/lint/breaking, generation, route checks, artifact publication after approval;
+- `gym-proto`: Buf checks, direct OpenAPI 3.0 generation, route checks, and artifact publication;
 - `ms-gym-identifier`: Go race tests and image build;
 - `ms-gym-member`: Gradle checks and image build;
-- `ms-gym-plans`: reuses `gym-infra` `java-ci` (`./gradlew build`) and `docker-build`; empty-DB Flyway, Helm values/render, and no-messaging static checks remain G7 closeout items;
-- `gym-infra`: Compose/Kong validation and Helm rendering.
+- `ms-gym-plans`: Gradle checks, Flyway, Specification tests, image and Helm checks;
+- `gym-infra`: Kong/Compose validation and Helm rendering.
 
-Deferred catalog services are not part of the G8 build matrix.
-
-## Security Verification Targets
-
-- Public Plans routes require the expected user/admin authorization.
-- Internal Plans methods are absent from generated HTTP and Kong.
-- Wrong or missing workload certificates are rejected.
-- Identifier and Member certificates cannot exchange method privileges.
-- Kong strips spoofed trusted headers.
-- Member purchase fails closed when Plans is unavailable before initiation.
-- Selected-gym issuance fails closed when Plans or Member is unavailable.
-- No broad ingress permits arbitrary workloads to call Plans native gRPC.
+Java service docs retain `./gradlew startEnv` and `./gradlew stopEnv` for local dependencies.

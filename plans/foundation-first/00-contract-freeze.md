@@ -1,5 +1,7 @@
 # Phase 0 — Freeze Cross-Repository Contracts
 
+> **Historical contract note:** This phase froze the original selected-gym JWT and Identifier-to-Member boundary. [Phase 9 Stage 0](09-kong-grpc-gateway-openapi.md#stage-0--replace-selected-gym-jwt-state-before-gateway-generation) supersedes those targets with stable identity, explicit gym request context, no Identifier-to-Member edge, and Member/Plans public gRPC behind Kong. Preserve G0 evidence unchanged.
+
 ## Objective
 
 Reach G0 by making the API, identity, Kafka, ingress, and JWT contracts unambiguous before shared transport implementations change.

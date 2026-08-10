@@ -152,7 +152,8 @@ Member fan-out trust:
 
 - Peer SAN `ms-gym-notification` only on exact method `ListMembersByStatus`
 - Request must include at least one `gym_ids` entry (no chain-wide export)
-- No `x-user-*` headers; no Kong route for this method
+- No `x-user-*` headers; no Kong route or OpenAPI operation for this method
+- No JWT `gym_id` or `membership_status` is used; Member returns live scoped state
 
 ---
 
@@ -201,7 +202,7 @@ service NotificationService {
   rpc RegisterDevice(RegisterDeviceRequest) returns (google.protobuf.Empty);
   rpc UnregisterDevice(UnregisterDeviceRequest) returns (google.protobuf.Empty);
 
-  // Admin: send manual notification
+  // SUPER_ADMIN until authoritative staff-to-gym assignment exists.
   rpc SendBulkNotification(BulkNotificationRequest) returns (BulkNotificationResponse);
 }
 ```

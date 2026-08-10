@@ -1,5 +1,7 @@
 # Phase 2 — Complete `common-java` and `common-go`
 
+> **Historical trust note:** G2 implemented the original selected-gym trusted-header profile. [Phase 9 Stage 0](09-kong-grpc-gateway-openapi.md#stage-0--replace-selected-gym-jwt-state-before-gateway-generation) removes trusted `gym_id` and `membership_status` claims; public services accept identity/role metadata only from the approved gateway SAN and read gym context from validated requests. Preserve G2 evidence unchanged.
+
 ## Objective
 
 Reach G2 by implementing the frozen auth, error, tracing, Kafka, retry, commit, and DLQ contracts in both shared libraries. The two lanes run in parallel after G1.

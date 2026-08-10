@@ -1,5 +1,7 @@
 # Phase 3 — Cross-Language RC and Stable Foundation Releases
 
+> **Historical release note:** G3/G4 validated common releases against the original selected-gym trust profile. [Phase 9](09-kong-grpc-gateway-openapi.md) supersedes mutable gym/membership claims and the public transport boundary; retain this phase only as foundation-release evidence.
+
 ## Objective
 
 Reach G3 with immutable release candidates that pass one cross-language matrix, then reach G4 after `ms-gym-member` validates the Java RC and stable common releases are published.

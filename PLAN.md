@@ -2,13 +2,13 @@
 
 ## Authoritative execution plan
 
-Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G8 foundation for Identifier, Member, and Plans is complete (owner approval pending on G8). Deferred services stay catalog-only until a later roadmap gate.
+Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G8 foundation for Identifier, Member, and Plans is complete (owner approval pending on G8). Phase 9/G9 is planned for Kong HTTP/JSON-to-gRPC transcoding and generated OpenAPI 3.0. Deferred services stay catalog-only until a later roadmap gate.
 
 ## Active services
 
 | Service | Stack | Database | Ownership |
 |---|---|---|---|
-| `ms-gym-identifier` | Go + Gin | PostgreSQL `identity_db` | Identity, credentials, tokens, selected-gym token flow |
+| `ms-gym-identifier` | Go + Gin | PostgreSQL `identity_db` | Identity, credentials, and stable identity tokens |
 | `ms-gym-member` | Java 26 + Spring Boot 4 | PostgreSQL `member_db` | Profiles, subscriptions, membership lifecycle and validation |
 | `ms-gym-plans` | Java 26 + Spring Boot 4 | PostgreSQL `plans_db` | Gym locations, gym-specific plans, VND pricing |
 
@@ -35,15 +35,18 @@ flowchart LR
     F[G0-G5<br/>Foundation complete] --> C[Phase 6<br/>Plans contracts]
     C --> P[Phase 7<br/>Build ms-gym-plans]
     P --> I[Phase 8<br/>Identifier + Member + Plans integration]
+    I --> S[Phase 9 Stage 0<br/>Stable identity + explicit gym context]
+    S --> G[Phase 9 Stages 1-4<br/>Kong gRPC-Gateway + generated OpenAPI 3.0]
 ```
 
 ## Target service interaction
 
 ```mermaid
 flowchart LR
-    ID[Identifier] -->|validate active gym| PL[Plans]
-    ID -->|membership by user + gym| MB[Member]
-    MB -->|trusted purchasable terms| PL
+    C[Browser] -->|browse gyms and plans through Kong| PL[Plans]
+    C -->|gym-scoped membership request through Kong| MB[Member]
+    ID[Identifier] -->|GetActiveGym for trainer validation only| PL
+    MB -->|ResolvePurchasablePlan gym + plan| PL
 ```
 
 Member keeps `PurchaseMembership`; production Payment remains deferred. G8 proved the outbound Payment port with `gym-infra/kong/fixtures/fake-payment`.
@@ -55,5 +58,5 @@ Member keeps `PurchaseMembership`; production Payment remains deferred. G8 prove
 | Plans API or fields | Phase 6, `gym-proto`, Plans service spec, Member purchase boundary |
 | Gym ownership | Architecture overview, Identifier, Member, Plans, Check-in boundary, infrastructure routes |
 | Subscription terms | Member spec, Plans spec, purchase flow, future Payment boundary |
-| External route | HTTP mapping source, Kong route documentation, NetworkPolicy documentation |
+| External route | Protobuf `google.api.http` annotation, generated OpenAPI 3.0, Kong route documentation, NetworkPolicy documentation |
 | Kafka event | Kafka catalog, canonical Protobuf event, producer/consumer ownership |

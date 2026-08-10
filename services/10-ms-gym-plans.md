@@ -1,18 +1,18 @@
 # Plans Service
 
-> **Tech:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL `plans_db` | **Ports:** 50051 gRPC / 8080 HTTP | **Deps:** `common-java:2.1.0`, `gym-proto-java:4.0.0`
+> **Tech:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL `plans_db` | **Ports:** 50051 business gRPC / 8080 Actuator-only after G9 | **Deps:** `common-java:2.1.1`, target G9 `gym-proto-java` release
 
 ## Responsibilities
 
 - Own canonical gym locations and status.
 - Own gym-specific membership-plan catalog.
 - Own plan type, duration, availability, and VND list price.
-- Validate active gyms for Identifier over workload mTLS.
+- Validate active gyms for Identifier trainer administration over workload mTLS.
 - Resolve trusted purchasable terms for Member over workload mTLS.
 
 Plans V1 has no Kafka, outbox, cache, scheduler, Payment integration, discount calculation, or hard delete.
 
-## Data model
+## Data Model
 
 ```mermaid
 erDiagram
@@ -43,7 +43,7 @@ erDiagram
     GYM_LOCATIONS ||--o{ MEMBERSHIP_PLANS : offers
 ```
 
-The plan-to-gym foreign key is local to `plans_db`. Identifier and Member store gym and plan IDs as opaque strings without cross-service foreign keys.
+Plan-to-gym FK is local to `plans_db`. Identifier and Member store opaque IDs without cross-service FKs.
 
 ## Invariants
 
@@ -53,6 +53,7 @@ The plan-to-gym foreign key is local to `plans_db`. Identifier and Member store 
 - Monthly and yearly plans require positive duration.
 - Lifetime plans have no duration.
 - Closed gyms and inactive plans cannot be purchased.
+- A plan must belong to requested gym.
 - Catalog edits affect future purchases only; Member owns purchased snapshots.
 
 ## API
@@ -69,58 +70,67 @@ service PlansService {
   rpc GetMembershipPlan(GetMembershipPlanRequest) returns (GetMembershipPlanResponse);
   rpc ListMembershipPlans(ListMembershipPlansRequest) returns (ListMembershipPlansResponse);
 
-  // Workload-only; no HTTP mapping.
+  // Workload-only; no HTTP annotation, Kong route, or OpenAPI operation.
   rpc GetActiveGym(GetActiveGymRequest) returns (GetActiveGymResponse);
   rpc ResolvePurchasablePlan(ResolvePurchasablePlanRequest)
       returns (ResolvePurchasablePlanResponse);
 }
 ```
 
-HTTP JSON (common-java `JsonFormat`) uses full enum names, for example `planType: "PLAN_TYPE_MONTHLY"` and `status: "GYM_LOCATION_STATUS_CLOSED"`. Domain/DB keep short names (`MONTHLY`, `CLOSED`). No shared `GymLocationResponse` / `MembershipPlanResponse` / `ResolvedPlanResponse`.
+Protobuf JSON uses lowerCamelCase fields and full enum names, such as `planType: "PLAN_TYPE_MONTHLY"`. Domain/DB use short names.
 
-### HTTP routes
+## Public HTTPS/JSON
 
-Public HTTP is in-process Spring MVC on `8080`. Request and response bodies are generated `plans.v1` protobuf messages, bound as camelCase JSON (`chainId`, `priceVnd`) through `common-java` `ProtobufJsonHttpMessageConverter` auto-config. There is no Go grpc-gateway sidecar and no handwritten HTTP DTO package.
+Kong's bundled `grpc-gateway` reads annotated Protobuf source and transcodes HTTPS/JSON to Plans mTLS gRPC `50051`. Plans has no native Spring MVC business endpoint after G9.
 
 | Method | Path | Access |
 |---|---|---|
 | `POST` | `/api/v1/gyms` | `SUPER_ADMIN` |
-| `PUT` | `/api/v1/gyms/{id}` | selected-gym `ADMIN`, `SUPER_ADMIN` |
+| `PUT` | `/api/v1/gyms/{id}` | `SUPER_ADMIN` |
 | `GET` | `/api/v1/gyms` | authenticated |
 | `GET` | `/api/v1/gyms/{id}` | authenticated |
-| `POST` | `/api/v1/gyms/{gym_id}/plans` | selected-gym `ADMIN`, `SUPER_ADMIN` |
-| `PUT` | `/api/v1/plans/{id}` | plan-gym `ADMIN`, `SUPER_ADMIN` |
+| `POST` | `/api/v1/gyms/{gym_id}/plans` | `SUPER_ADMIN` |
+| `PUT` | `/api/v1/plans/{id}` | `SUPER_ADMIN` |
 | `GET` | `/api/v1/gyms/{gym_id}/plans` | authenticated |
 | `GET` | `/api/v1/plans/{id}` | authenticated |
 
-`GetActiveGym` and `ResolvePurchasablePlan` are absent from HTTP and Kong routing.
+`GetActiveGym` and `ResolvePurchasablePlan` remain absent from HTTP annotations, Kong, and OpenAPI 3.0.
 
-## Workload calls
+No authoritative `ADMIN`-to-gym assignment exists. Request/path gym context is not authorization. Restore gym-scoped `ADMIN` mutations only after a separate assignment model is implemented and evidenced.
+
+## Workload Calls
 
 ### Identifier
 
-`SelectGym` calls `GetActiveGym(gym_id)`. Only verified `ms-gym-identifier` identity may call it. Missing, closed, or unavailable gyms prevent selected-gym token issuance.
+`CreateTrainerAccount` calls `GetActiveGym(gym_id)`. Only verified `ms-gym-identifier` identity may call this exact method. Customer gym selection does not use Identifier or this RPC.
 
 ### Member
 
-Before payment initiation, Member calls `ResolvePurchasablePlan(plan_id, gym_id)`. Only verified `ms-gym-member` identity may call it. The response supplies canonical `plan_id`, `gym_id`, `plan_type`, `duration_days`, and `price_vnd` for Member's pending-purchase snapshot.
+Before Payment initiation, Member calls `ResolvePurchasablePlan(gym_id, plan_id)`. Only verified `ms-gym-member` identity may call it. Plans proves:
 
-Workload calls trust certificate identity, not `x-user-id`, `x-user-role`, `x-gym-id`, or `x-membership-status` metadata.
+- requested gym exists and is active;
+- requested plan exists and is active;
+- plan belongs to requested gym;
+- returned type, duration, and `price_vnd` are canonical.
 
-## Authorization
+Member stores returned terms in its pending-purchase snapshot.
 
-- Authenticated users may read gyms and plan catalog.
-- `SUPER_ADMIN` may create gyms and manage any gym or plan.
-- `ADMIN` may update only selected gym and plans belonging to it.
+Workload calls trust certificate identity, not `x-user-*`, `x-gym-id`, or `x-membership-status` metadata.
+
+## Public Trust
+
+- Authenticated users may browse gyms and plans.
+- `SUPER_ADMIN` manages gyms and plans during G9.
+- Public gRPC methods accept end-user metadata only when peer SAN is Kong.
+- Kong strips client-forged trusted headers and injects verified identity/role metadata.
+- Native direct clients and workload certificates cannot call public methods with forged user metadata.
 - No method is public by omission.
-- Kong strips spoofed trusted headers before forwarding public HTTP requests.
-- Native gRPC requires mTLS and explicit method policy.
 
 ## Persistence
 
 Repositories use Spring Data JPA and `JpaSpecificationExecutor`.
 
-Specifications compose only current filters:
+Specifications compose current filters:
 
 - locations: chain, city, status;
 - plans: gym, type, active.
@@ -136,17 +146,38 @@ Use standard repository ID lookup/write methods. Add no custom JPQL or native fi
 - role, scope, or workload denial: `PERMISSION_DENIED`;
 - dependency/database outage: `UNAVAILABLE`.
 
-Stable `x-error-code` identifies the domain condition. Internal failures are redacted.
+Stable `x-error-code` identifies domain condition. Internal failures are redacted. Kong 3.8 translation must be observed and documented before publishing frontend error behavior.
+
+## Generated Contracts
+
+- Protobuf is source for messages, validation, and `google.api.http` annotations.
+- Pinned `protoc-gen-openapiv3` generates canonical OpenAPI 3.0 directly from Protobuf.
+- Browser REST clients generate from OpenAPI 3.0.
+- Backend and native gRPC clients generate from Protobuf.
+- Kong mounts immutable annotated Protobuf source bundle, not OpenAPI.
 
 ## Deployment
 
 - `plans_db` is isolated from Identifier and Member databases.
-- Kong reaches Plans Spring HTTP `8080` only (same JVM as gRPC; not a separate gateway process).
-- Identifier and Member reach Plans gRPC `50051` through caller-specific NetworkPolicy and mTLS.
-- Plans has no Kafka or Schema Registry environment variables.
-- CI reuses `pploc/gym-infra` `java-ci.yml` (`./gradlew build`) and `docker-build.yml` for image push.
-- Pin `com.gym:common-java:2.1.0` and `com.gym.proto:gym-proto-java:4.0.0` from GitHub Packages; no `mavenLocal()` (local composite/includeBuild only for pre-publish staging).
+- Kong reaches Plans gRPC `50051` with Kong client identity, CA validation, and server SAN verification.
+- Kong has no business route to Plans `8080`.
+- `8080` retains Actuator health/readiness only.
+- Identifier and Member reach only their exact Plans workload methods on `50051`.
+- Port-specific NetworkPolicies separate Kong, workloads, and health/metrics callers.
+- Plans has no Kafka or Schema Registry settings.
+- Production private keys come from Secrets/secret manager and are never committed.
+- Align Plans to exact G9 `gym-proto-java` release before deployment.
+
+## Local Environment
+
+```bash
+./gradlew startEnv
+./gradlew test
+./gradlew stopEnv
+```
+
+`startEnv` and `stopEnv` wrap local Docker Compose dependencies and remain documented after MVC removal.
 
 ## Tests
 
-Use `given_when_then` naming. Cover CRUD, filters, constraints, auth scope, inactive/mismatch failures, mTLS caller matrix, route exposure, empty-DB migration, image health, and Helm rendering.
+Use `given_when_then` naming. Cover CRUD, Specifications, constraints, authenticated reads, `SUPER_ADMIN` mutations, denied `ADMIN` request-only scope, Kong SAN, exact Identifier/Member workload matrix, inactive/mismatch failures, OpenAPI operation set, direct `8080 /api/**` negative behavior, Actuator health, image health, and Helm rendering.

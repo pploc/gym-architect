@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G6–G8 complete for Identifier/Member/Plans. Active contracts break in place on packages `*.v1` and publish as Java `gym-proto-java:4.0.0` / Go `github.com/pploc/proto-go` (Maven/module version 4.x coordinates; source packages stay `*.v1`). Shared libs: `common-go` 0.4.0, `common-java` 2.1.0. Plans owns catalog (G7); three-service integration proven by `run-g8.sh` (G8). G0–G5 and prior G8 evidence remain historical. See [Phase 8](../plans/foundation-first/08-three-service-integration.md).
+> **Roadmap status:** G6–G8 are complete historical gates for Identifier, Member, and Plans. Phase 9 is planned. Stage 0 replaces selected-gym JWT state with stable identity and explicit gym resource context before Kong routes and OpenAPI 3.0 are generated. See [Phase 9](../plans/foundation-first/09-kong-grpc-gateway-openapi.md).
 
 ## System Context
 
@@ -13,15 +13,17 @@ The platform is a microservices backend for a multi-location gym chain operating
 | Trainer Mobile App | Trainers | Manage availability, bookings, and coaching history |
 | Admin Ops Dashboard | Chain owners | Cross-location administration and analytics |
 
+Selecting a gym is frontend URL/request state. It does not issue another token and does not prove administrative authorization.
+
 ## Active Roadmap Scope and Service Catalog
 
-The catalog contains ten services. G6–G8 actively cover Identifier, Member, and Plans. The other seven entries describe future service boundaries and must not be read as deployed components.
+Only Identifier, Member, and Plans are active. Other entries are future boundaries, not deployed components.
 
-| # | Service | Technology | Database | Ownership | Status through G8 |
+| # | Service | Technology | Database | Ownership | Status |
 |---|---|---|---|---|---|
-| 1 | Identifier | Go + PostgreSQL | `identity_db` | Users, credentials, refresh tokens, JWTs, selected-gym token issuance | Active |
-| 2 | Member | Java 26 + Spring Boot 4 | `member_db` | Profiles, subscriptions, purchase orchestration, pending purchases, lifecycle, validation, membership events | Active |
-| 3 | Plans | Java 26 + Spring Boot 4 | `plans_db` | Gym locations, gym-specific membership plans, availability, duration, VND list price | Active (G7 service + G8 integration) |
+| 1 | Identifier | Go + PostgreSQL | `identity_db` | Users, credentials, refresh tokens, stable identity JWTs | Active |
+| 2 | Member | Java 26 + Spring Boot 4 | `member_db` | Profiles, subscriptions, purchase orchestration, lifecycle, validation, membership events | Active |
+| 3 | Plans | Java 26 + Spring Boot 4 | `plans_db` | Gym locations, gym-specific plans, availability, duration, VND list price | Active |
 | 4 | Payment | Java + PostgreSQL | `payment_db` | Payments, provider webhooks, refunds | Deferred; G8 uses a fake fixture only |
 | 5 | Workout | Go + Cassandra | `workout_ks` | Workout logs, templates, personal records | Deferred |
 | 6 | Trainer | Java + PostgreSQL | `trainer_db` | Trainer profiles, availability, bookings | Deferred |
@@ -30,16 +32,16 @@ The catalog contains ten services. G6–G8 actively cover Identifier, Member, an
 | 9 | Analytics | Java + YugabyteDB | `analytics_db` | Attendance, revenue, and trend projections | Deferred |
 | 10 | Promotion | Java + PostgreSQL | `promotion_db` | Promotion codes and reservations | Deferred |
 
-## G8 Topology
+## Phase 9 Target Topology
 
 ```mermaid
 flowchart LR
-    Client[Clients] --> Kong[Kong]
-    Kong -->|public HTTP| ID[Identifier]
-    Kong -->|public Plans HTTP| PL[Plans]
+    Client[Browser clients] -->|HTTPS JSON + stable JWT| Kong[Kong]
+    Kong -->|HTTP 8080| ID[Identifier]
+    Kong -->|gRPC-Gateway + mTLS 50051| MB[Member]
+    Kong -->|gRPC-Gateway + mTLS 50051| PL[Plans]
 
-    ID -->|mTLS: GetActiveGym| PL
-    ID -->|mTLS: GetMembershipStatusByUserId| MB[Member]
+    ID -->|mTLS: GetActiveGym for trainer validation| PL
     MB -->|mTLS: ResolvePurchasablePlan| PL
     MB -->|G8 fixture only| FP[Fake Payment]
 
@@ -51,11 +53,13 @@ flowchart LR
     MB --> Kafka
 ```
 
-Plans V1 has no Kafka producer, consumer, topic, outbox, cache, scheduler, Schema Registry dependency, or Payment integration. The Phase-8 fake Payment component exists only to prove purchase correlation and event replay; it is not the production Payment service.
+There is no Identifier-to-Member customer-flow call. Plans `8080` remains available only for Actuator, probes, and metrics after Kong cutover; Plans business traffic uses `50051`.
+
+Plans V1 has no Kafka producer, consumer, topic, outbox, cache, scheduler, Schema Registry dependency, or Payment integration. G8 fake Payment exists only to prove purchase correlation and event replay.
 
 ## Ownership and Database Isolation
 
-Each service owns its database exclusively. Cross-service identifiers are opaque strings. They are never cross-service database foreign keys.
+Each service owns its database exclusively. Cross-service identifiers are opaque strings and never cross-service database foreign keys.
 
 ```text
 identity_db
@@ -75,51 +79,93 @@ plans_db
   membership_plans
 ```
 
-Only Plans may enforce a local foreign key from `membership_plans.gym_id` to `gym_locations.id`. Member stores opaque `user_id`, `gym_id`, and `plan_id` values. A subscription also stores `plan_type_snapshot`, `duration_days_snapshot`, and `price_vnd_snapshot`; later catalog changes do not alter purchased terms.
+Only Plans may enforce a local foreign key from `membership_plans.gym_id` to `gym_locations.id`. Member stores opaque `user_id`, `gym_id`, and `plan_id` values plus frozen purchased terms.
 
-Identifier owns no Member or Plans table and stores no cross-service gym foreign key. Normal login and refresh tokens are gym-neutral. A selected-gym token carries an explicitly selected `gym_id` and the membership status returned by Member.
+Identifier owns no Member or Plans table and stores no gym assignment. All access tokens contain stable identity and token-control claims only:
 
-## Plans Domain Rules
+```text
+sub, role, iss, aud, iat, exp, jti, kid
+```
 
-- Gym status is `ACTIVE` or `CLOSED`.
-- Plan type is `MONTHLY`, `YEARLY`, or `LIFETIME`.
-- `price_vnd` is a non-negative `int64`; V1 supports VND only.
-- Monthly and yearly plans require a positive duration.
-- Lifetime plans have no duration.
-- A plan is purchasable only when it is active, belongs to the requested gym, and that gym is active.
+They contain no `gym_id` and no `membership_status`. Live membership state remains Member-owned.
 
-## Communication Patterns
+## Customer Gym Selection and Purchase
 
-| Pattern | G6–G8 use |
+```mermaid
+sequenceDiagram
+    actor C as Customer
+    participant K as Kong
+    participant PL as Plans
+    participant MB as Member
+
+    C->>K: GET /api/v1/gyms
+    K->>PL: ListGymLocations
+    PL-->>C: Active gyms
+    C->>K: GET /api/v1/gyms/{gym_id}/plans
+    K->>PL: ListMembershipPlans(gym_id)
+    PL-->>C: Gym-specific plans
+    C->>K: POST /api/v1/gyms/{gym_id}/memberships/purchase
+    K->>MB: PurchaseMembership with verified sub/role
+    MB->>PL: ResolvePurchasablePlan(gym_id, plan_id)
+    PL-->>MB: Canonical active gym, plan, type, duration, price
+```
+
+Client `gym_id` is intent and resource context. Plans is authoritative for gym activity, plan activity, plan ownership, type, duration, and price. Member is authoritative for ownership, membership state, lifecycle, and purchased-term snapshots.
+
+## Authorization
+
+Customer self-service combines verified identity with Member-owned records. Request `gym_id` alone grants nothing.
+
+No authoritative `ADMIN`-to-gym assignment model exists. Until one is implemented and evidenced:
+
+- Plans gym and plan mutations are `SUPER_ADMIN`-only;
+- Member gym-wide administration is `SUPER_ADMIN`-only;
+- Identifier trainer-account creation with a gym argument is `SUPER_ADMIN`-only;
+- authenticated users may browse gyms and plans.
+
+Never infer admin gym scope from UI state, request paths, or obsolete selected-gym claims.
+
+## Communication and Trust
+
+| Pattern | Phase 9 target |
 |---|---|
-| Public HTTP/JSON | Client to Kong to service-local Spring HTTP on `8080` (Java) or Go HTTP gateway (Identifier) |
-| Native gRPC with mTLS | Identifier to Plans, Identifier to Member, and Member to Plans on `50051` |
+| Identifier public HTTP/JSON | Client to Kong to Identifier HTTP gateway on `8080` |
+| Member and Plans public HTTP/JSON | Client to Kong `grpc-gateway` to service mTLS gRPC on `50051` |
+| Native workload gRPC | Exact caller SAN to exact method on `50051` |
 | Kafka | Identifier identity events and Member membership/payment handling only |
 
-The active workload allowlist is exact:
+Public Member and Plans metadata is trusted only when the peer certificate SAN is Kong. Kong strips forged trusted headers and injects verified identity/role metadata only. Path binding populates explicit `gym_id`; it is not a JWT claim.
 
-- Identifier may call Plans `GetActiveGym`.
-- Identifier may call Member `GetMembershipStatusByUserId`.
+Exact internal allowlist:
+
+- Identifier may call Plans `GetActiveGym` for current trainer validation.
 - Member may call Plans `ResolvePurchasablePlan`.
+- Check-in may call Member `ValidateMembership` when that deferred service is implemented.
+- Notification may call Member `ListMembersByStatus` when that deferred service is implemented.
 
-A workload certificate establishes service identity, not an end-user role. Internal callers never forge or forward `x-user-id`, `x-user-role`, `x-gym-id`, or `x-membership-status` as workload credentials.
-
-Check-in remains deferred. Plans is the canonical location owner and Member is the membership-decision owner, but Plans V1 does not authorize a Check-in method. Kiosk provisioning requires a separately frozen Check-in-to-Plans contract before implementation.
+Internal methods have no HTTP annotation, Kong route, or OpenAPI operation. Workload certificates establish service identity, not end-user roles.
 
 ## API-First Boundary
 
-Protobuf definitions and per-service HTTP configuration are the contract source of truth. Public methods receive HTTP mappings and route through Kong to service-local HTTP listeners. Workload-only methods have no HTTP mapping and are reachable only through authorized mTLS gRPC channels.
+Protobuf owns messages, validation, and public `google.api.http` annotations. Generated artifacts are:
 
-The Member-to-Plans relocation shipped as G6 contracts and G7–G8 implementation. Historical G0–G5 handoffs remain truthful for the pre-split boundary; G8 evidence is the revised-boundary proof.
+- Java and Go service/native-client types from Protobuf;
+- canonical OpenAPI 3.0 containing exactly 12 Identity, seven Member, and eight Plans browser operations, generated directly from Protobuf with `protoc-gen-openapiv3` pinned to a reviewed tag and commit;
+- immutable runtime Protobuf source bundle for Kong.
+
+Browser REST clients generate from released OpenAPI 3.0. Backend and native gRPC clients generate from Protobuf. Do not handwrite parallel Swagger schemas or backend DTOs from OpenAPI.
 
 ## Key Decisions
 
 | Decision | Target choice | Reason |
 |---|---|---|
+| Customer gym selection | Explicit URL/request state | Keeps mutable resource context out of identity sessions |
+| JWT state | Stable identity only | Avoids stale membership and gym authorization claims |
 | Catalog owner | Plans | One canonical source for locations and purchasable terms |
 | Membership owner | Member | Keeps lifecycle, validation, and events with subscription state |
-| Purchase terms | Frozen in Member before Payment initiation | Completion remains deterministic if Plans later changes or is unavailable |
-| Payment correlation | Member-owned `purchase_id` | Avoids treating a reusable plan ID as a purchase instance |
+| Purchase terms | Frozen in Member before Payment | Completion remains deterministic after catalog changes |
 | Database isolation | DB per service, opaque cross-service IDs | Prevents schema coupling and cross-service joins |
-| Internal trust | Caller-specific mTLS and method allowlists | Prevents user-header spoofing and workload privilege confusion |
-| Plans messaging | None in V1 | No current workflow requires it |
+| Public trust | Kong SAN plus verified identity metadata | Prevents direct-header spoofing |
+| Internal trust | Caller-specific mTLS and exact method allowlists | Prevents workload privilege confusion |
+| Admin gym scope | `SUPER_ADMIN` until staff assignment exists | Request gym context is not authorization |
+| Browser contract | Generated OpenAPI 3.0 | Describes HTTP paths, security, schemas, and errors |

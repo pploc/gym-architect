@@ -1,63 +1,58 @@
 # Project Repository Structure
 
-> **Roadmap status:** Sibling-repository workspace. G6–G8 complete for Identifier/Member/Plans. Active pins target `common-java:2.1.0` and `gym-proto-java:4.0.0` (local composite/replace only for pre-publish staging). Additive G8 topology under `gym-infra/kong/g8-*`. Historical Phase 0–5 evidence remains unchanged.
+> **Roadmap status:** Sibling-repository workspace. G6–G8 are historical. Phase 9 Stage 0 removes selected-gym identity coupling; later stages add generated OpenAPI 3.0 and Kong gRPC-Gateway, then remove Plans MVC business code.
 
 ## Workspace Model
 
-The project is a collection of sibling Git repositories under one local workspace, not a single deployable monorepo:
+The project is sibling Git repositories under one workspace, not one deployable monorepo:
 
 ```text
 gapi/
 ├── docs/                 # Architecture, service specifications, roadmap, evidence
-├── gym-proto/            # Protobuf, HTTP mappings, generated artifact publication
+├── gym-proto/            # Protobuf, annotations, generated artifacts
 ├── common-go/            # Shared Go runtime packages
 ├── common-java/          # Shared Java runtime packages
 ├── gym-infra/            # Compose, Kong, Helm, reusable CI/CD
-├── ms-gym-identifier/    # Existing Go service
-├── ms-gym-member/        # Existing Java service
-└── ms-gym-plans/         # G7 Java service (Spring HTTP 8080 + gRPC 50051)
+├── ms-gym-identifier/    # Go identity service
+├── ms-gym-member/        # Java membership service
+└── ms-gym-plans/         # Java catalog service
 ```
 
-Payment, Workout, Trainer, Check-in, Notification, Analytics, and Promotion remain service-catalog entries. Their contracts and design docs do not imply that service repositories or deployments are active through G8.
+Payment, Workout, Trainer, Check-in, Notification, Analytics, and Promotion remain catalog entries.
 
 ## Contract Repository
 
-`gym-proto` is the source of truth for service and Kafka contracts. Existing packages keep API package names such as `identity.v1` and `member.v1`. G6 plans a breaking repository release because location and plan catalog RPCs move out of `MemberService`.
+`gym-proto` owns service/event schemas, validation, and final Member/Plans `google.api.http` annotations.
 
 ```text
 gym-proto/
 ├── buf.yaml
 ├── buf.gen.yaml
+├── buf.openapi.gen.yaml          # Phase 9 target
 ├── proto/
 │   ├── identity/v1/
-│   │   ├── identity.proto
-│   │   └── identity_http.yaml
 │   ├── member/v1/
-│   │   ├── member.proto
-│   │   └── member_http.yaml
-│   ├── plans/v1/                 # G6+ Plans contracts
-│   │   ├── plans.proto
-│   │   └── plans_http.yaml
-│   ├── payment/v1/               # Deferred service catalog
-│   ├── workout/v1/               # Deferred service catalog
-│   ├── trainer/v1/               # Deferred service catalog
-│   ├── checkin/v1/               # Deferred service catalog
-│   ├── notification/v1/          # Deferred service catalog
-│   ├── analytics/v1/             # Deferred service catalog
-│   ├── promotion/v1/             # Deferred service catalog
-│   └── events/v1/
-├── scripts/
-└── contracts/
+│   ├── plans/v1/
+│   ├── common/v1/
+│   ├── events/v1/
+│   └── google/api/
+├── scripts/                      # Contract, route, OpenAPI, determinism checks
+├── contracts/                    # JWT/route semantic manifests
+├── gen/openapi/
+│   └── gym-active-api.openapi.yaml   # Canonical generated OpenAPI 3.0
+└── dist/kong-proto/              # Exported runtime Protobuf source bundle
 ```
 
-G6 target changes:
+Phase 9 contract changes:
 
-- Add `plans.v1.PlansService` and public Plans HTTP mappings.
-- Remove plan listing and gym-location RPCs/messages from `member.v1.MemberService`.
-- Keep Plans `GetActiveGym` and `ResolvePurchasablePlan` workload-only and absent from HTTP mappings.
-- Active release targets: Java `com.gym.proto:gym-proto-java:4.0.0` and Go module `github.com/pploc/proto-go` (no `/v4` path segment; packages remain `*.v1`). Prior `3.0.0` / `proto-go/v3` artifacts stay historical.
-
-Those release coordinates remain proposals until G6 validation and explicit publication approval. Existing v2 artifacts are never rewritten.
+- remove Identity `SelectGym` and Member `GetMembershipStatusByUserId`; reserve only removed fields in retained messages and prevent retired symbol reuse with contract checks;
+- remove `gym_id` and `membership_status` from JWT profile;
+- add explicit gym context to gym-specific public Member requests;
+- annotate public unary Member/Plans RPCs inline;
+- keep `GetActiveGym`, `ResolvePurchasablePlan`, `ValidateMembership`, and `ListMembersByStatus` internal-only;
+- generate Java/Go artifacts from Protobuf;
+- generate canonical OpenAPI 3.0 for exactly 12 Identity, seven Member, and eight Plans browser operations directly from Protobuf with pinned `protoc-gen-openapiv3`;
+- publish runtime Protobuf bundle for Kong.
 
 ## Active Service Repositories
 
@@ -69,17 +64,17 @@ ms-gym-identifier/
 ├── internal/
 │   ├── domain/
 │   ├── usecase/
-│   │   └── port/            # Separate Member and planned Plans ports
+│   │   └── port/
+│   │       └── plans_client.go   # GetActiveGym for trainer validation
 │   ├── adapter/
-│   │   ├── member/          # Membership-status workload client
-│   │   └── plans/           # Planned active-gym workload client
+│   │   └── plans/
 │   └── config/
 ├── migrations/
 ├── Dockerfile
 └── go.mod
 ```
 
-Identifier uses PostgreSQL `identity_db`, Redis for token revocation, and Kafka for identity events. It owns no Plans or Member persistence.
+Phase 9 removes Member port/adapter/configuration and selected-gym use case. Identifier still uses PostgreSQL, Redis, Kafka, and Plans mTLS for trainer validation.
 
 ### `ms-gym-member`
 
@@ -91,19 +86,18 @@ ms-gym-member/
 │   ├── adapter/
 │   │   ├── in/grpc/
 │   │   └── out/
-│   │       ├── persistence/       # Profiles, subscriptions, pending purchases
-│   │       ├── plans/             # Planned ResolvePurchasablePlan client
+│   │       ├── persistence/       # Profiles, subscriptions, purchases, outbox
+│   │       ├── plans/             # ResolvePurchasablePlan client
 │   │       ├── payment/
 │   │       └── kafka/
 │   └── config/
-├── src/main/resources/
-│   └── db/migration/
+├── src/main/resources/db/migration/
 ├── Dockerfile
 ├── build.gradle
 └── gradlew
 ```
 
-Member has no location or plan-catalog package after G8. Member retains membership lifecycle, validation, events, and purchased-term snapshots.
+Member owns no location/catalog package. Public business API remains gRPC internally and is represented as HTTPS/JSON by Kong.
 
 ### `ms-gym-plans`
 
@@ -113,10 +107,8 @@ ms-gym-plans/
 │   ├── domain/
 │   ├── application/
 │   ├── adapter/
-│   │   ├── in/
-│   │   │   ├── http/        # Spring MVC public catalog routes (Kong target)
-│   │   │   └── grpc/        # Native gRPC public + internal workload RPCs
-│   │   └── out/persistence/ # JPA entities, repositories, Specifications
+│   │   ├── in/grpc/              # Public + workload gRPC handlers
+│   │   └── out/persistence/      # JPA repositories and Specifications
 │   └── config/
 ├── src/main/resources/
 │   ├── application.yml
@@ -126,33 +118,27 @@ ms-gym-plans/
 └── gradlew
 ```
 
-Stack: Java 26, Spring Boot 4, Flyway, Spring Data JPA, PostgreSQL `plans_db`, Spring HTTP `8080`, native gRPC `50051`. Public HTTP is in-process Spring MVC (not a Go grpc-gateway sidecar). Query filtering uses composed JPA `Specification` objects. Plans V1 has no Kafka, Schema Registry, outbox, cache, scheduler, or Payment packages.
+After G9, Plans has no Spring MVC business adapter. Spring web remains only as needed for Actuator on `8080`; business gRPC uses `50051`. Filtering uses composed JPA `Specification` objects.
 
 ## Infrastructure Repository
-
-`gym-infra` is separate from service repositories:
 
 ```text
 gym-infra/
 ├── kong/
-│   ├── g5-compose.yml             # Historical pre-split fixture
-│   ├── g5-business-check.sh       # Historical evidence helper
-│   ├── g8-compose.yml             # Three-service topology
-│   ├── g8-kong.yml
-│   ├── g8-business-check.sh
-│   ├── run-g8.sh
-│   ├── generate-g8-certs.sh
-│   └── fixtures/fake-payment/     # Phase-only Payment fixture
-├── helm/
-│   └── gym-service/
+│   ├── g5-*                       # Historical pre-split fixtures
+│   ├── g8-*                       # Historical three-service fixtures
+│   ├── g9-compose.yml             # Phase 9 target
+│   ├── g9-kong.yml
+│   ├── g9-business-check.sh
+│   ├── run-g9.sh
+│   └── fixtures/fake-payment/
+├── helm/gym-service/
 └── .github/workflows/
 ```
 
-G5 files remain unchanged and truthful about the pre-split topology. G8 infrastructure is additive: separate Plans database/service, caller-specific certificates, Plans public routes, and a phase-only fake Payment fixture.
+Create additive G9 fixtures rather than rewriting evidence inputs. G9 mounts released runtime proto bundle, configures Kong upstream mTLS, and renders port-specific NetworkPolicies.
 
 ## Development Commands
-
-Commands run in the repository they target:
 
 ```bash
 # Contracts
@@ -160,21 +146,29 @@ gym-proto$ make proto
 gym-proto$ make gen-go
 gym-proto$ make gen-java
 
-# Existing active services
+# Go service
 ms-gym-identifier$ go test -race ./...
+
+# Java services
+ms-gym-member$ ./gradlew startEnv
 ms-gym-member$ ./gradlew test
+ms-gym-member$ ./gradlew stopEnv
 
+ms-gym-plans$ ./gradlew startEnv
 ms-gym-plans$ ./gradlew clean check
+ms-gym-plans$ ./gradlew stopEnv
 ```
-
-Workspace-level convenience targets may coordinate repositories, but they do not change repository ownership or imply that deferred service repositories exist.
 
 ## Dependency Rules
 
-- Services consume tagged generated artifacts; generated stubs are not copied into service repositories.
-- Shared runtime behavior belongs in `common-go` or `common-java` only when more than one service needs it. Example: `common-java:2.1.0` ships servlet auto-config for camelCase protobuf JSON HTTP binding, Protovalidate interceptor, and canonical error mapping reused by Plans/Member; service-owned DTO type packages stay out of common libraries.
-- Service repositories own their domain and database migrations.
+- Services consume tagged generated artifacts; do not copy generated stubs into service repositories.
+- Backend/native clients generate from Protobuf.
+- Browser REST clients generate from released OpenAPI 3.0.
+- Kong consumes released annotated Protobuf source bundle, not OpenAPI.
+- Shared behavior moves to common libraries only after more than one service proves identical need.
+- Services own domain and migrations.
 - Cross-service IDs are opaque strings and never database foreign keys.
-- Public HTTP routes come from per-service HTTP configuration; internal workload RPCs remain unmapped.
+- Public Member/Plans routes come from inline annotations; internal workload RPCs remain unmapped.
+- Plans and Member filtering uses Spring Data JPA Specifications, not custom persistence queries.
 
-See [Phase 6 contracts](../plans/foundation-first/06-plans-contracts.md), [Phase 7 Plans](../plans/foundation-first/07-ms-gym-plans.md), and the [Plans service specification](../services/10-ms-gym-plans.md).
+See [Phase 9](../plans/foundation-first/09-kong-grpc-gateway-openapi.md) and [Plans service](../services/10-ms-gym-plans.md).
