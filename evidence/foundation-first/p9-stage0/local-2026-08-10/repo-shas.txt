@@ -1,0 +1,37 @@
+# Stage 0 repository / artifact SHAs (2026-08-10)
+
+## Pre-publication base HEADs (capture earlier same day)
+gym-proto a0811367acf6107d3396852fa2026fa8a2eded5b dirty=15
+ms-gym-identifier aaabad4d66fb8b9ce88fc943cccd6e8cbea6e1a5 dirty=18
+ms-gym-member ddce39e1610b7d4afc30cc5efdf0ef2a8910a8df dirty=20
+ms-gym-plans c6efaa8fce98d7f38978afc9495320acc3f39927 dirty=15
+gym-infra 300b98a15bc21f2d5ff3cb94ed314137be28485a dirty=9
+docs 5692fba1d4062c956dfe869ee7bbb20ee2713211 dirty=1
+
+## Published gym-proto
+source_sha=59000df8efa312b50763c3b95694b46842d2f6df
+source_tag=v5.0.0
+release_url=https://github.com/pploc/gym-proto/releases/tag/v5.0.0
+workflow_run=https://github.com/pploc/gym-proto/actions/runs/31404520393
+workflow_conclusion=success
+
+## Java
+artifact=com.gym.proto:gym-proto-java:5.0.0
+registry=https://maven.pkg.github.com/pploc/gym-proto
+pom_http=200
+
+## Go
+module=github.com/pploc/proto-go
+tag=v1.5.0
+annotated_tag_object=c9c532799a5e4bee19c26110b7fb92cea7950a0b
+commit=d88537703e2c603a56e96c21f5631c5cf12c87da
+bundle_sha256=738ad0014d632a37ea580ddc2f6f86f3fec7890163e0b0433970195f74c7e080
+
+## Fixture
+fixture_path=contracts/v1/kafka/confluent-7.7.1-fixtures.json
+fixture_sha256=339824c908900c8b85aaa12d4e03070833d43dc5e35190875a37cd6738e8c0f7
+
+## Publish commits on develop (chronological)
+7661381 feat: stage 0 identity-only JWT and explicit gym contracts
+54f1373 fix: run retired-symbol verifier with python3
+59000df fix: assert fixture subjects exist instead of total registry count

@@ -1,0 +1,8 @@
+# Stage 0 blockers at 2026-08-10 (post-publication)
+
+None for Stage 0 publication.
+
+Optional remaining (not Stage 0 blockers):
+1. Live G5 multi-service image run not re-run (needs full compose build + package tokens for images)
+2. Service repos may still have uncommitted Stage 0 source changes pending their own commits/PRs
+3. mavenLocal() remains in Member/Plans repositories block (pre-existing for other local packages); 5.0.0 resolves from GitHub Packages when local cache empty

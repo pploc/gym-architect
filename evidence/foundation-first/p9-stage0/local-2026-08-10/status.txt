@@ -1,0 +1,13 @@
+DOCKER_GATES_PASS_PUBLICATION_COMPLETE
+
+Published 2026-08-10 via workflow run 31404520393 (validate + publish success).
+
+Immutable artifacts:
+- gym-proto source tag v5.0.0 @ 59000df8efa312b50763c3b95694b46842d2f6df
+- Java com.gym.proto:gym-proto-java:5.0.0 (GitHub Packages)
+- Go github.com/pploc/proto-go@v1.5.0 commit d88537703e2c603a56e96c21f5631c5cf12c87da
+- Release https://github.com/pploc/gym-proto/releases/tag/v5.0.0
+
+Consumers pinned to published artifacts:
+- Identifier: proto-go v1.5.0, local replace removed; go test -race + build PASS
+- Member/Plans: gym-proto-java:5.0.0 resolved from maven.pkg.github.com; clean compile PASS; check PASS

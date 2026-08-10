@@ -1,0 +1,112 @@
+# Commands executed for Phase 9 Stage 0 verification
+# recorded_at=2026-08-10T22:00:31+07:00
+# Docker daemon unavailable — no live Registry / live Kong / G5.
+
+## gym-proto (non-Registry)
+cd /home/phucl/Workplace/gapi/gym-proto
+buf format -d --exit-code proto
+# observed: exit 0
+buf lint proto
+# observed: exit 0
+buf breaking proto --against '.git#tag=v4.0.0'
+# observed: exit 1 (expected) with SelectGym, GetMembershipStatusByUserId,
+#          PurchaseMembershipRequest field renames/type changes
+python3 scripts/verify-http-config.py
+# observed: consolidated mapping preserves all 80 intentional HTTP rules,
+#          including the exact eight-route Plans surface
+python3 scripts/verify-retired-symbols.py
+# observed: retired Protobuf RPC and message names are absent
+rm -rf gen && buf generate
+printf 'module github.com/pploc/proto-go\n\ngo 1.26\n' > gen/go/go.mod
+(cd gen/go && go mod tidy)
+./scripts/verify-generated-routes.sh
+# observed: generated Identifier, explicit-gym Member, and exact eight Plans
+#          routes match the frozen external surface
+find gen -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum
+# observed aggregate: f0d241acf513714860e083a53f83fe5b4ed7add00ac91dde3e8435e260c983d9
+# full per-file digests: generated.sha256 in this evidence directory
+./gradlew clean check --no-daemon
+# observed earlier: FAIL only on verifyConfluentFixtures (Docker/Registry down)
+# non-Registry checks (verifyHttpConfig / verifyRetiredSymbols / compile) green
+
+## ms-gym-member
+cd /home/phucl/Workplace/gapi/ms-gym-member
+rm -rf certs/local && ./scripts/generate-local-certs.sh
+openssl x509 -in certs/local/client-member.crt -noout -issuer -subject
+# observed: issuer=CN=gym-member-local-ca subject=CN=client-member
+# observed: client-identifier absent
+./gradlew test --tests 'com.gym.member.unit.grpc.PlansGrpcClientUnitTest' --no-daemon
+# observed: BUILD SUCCESSFUL
+./gradlew spotlessCheck clean check --no-daemon
+# observed: BUILD SUCCESSFUL (JaCoCo LINE >= 0.95)
+
+## ms-gym-plans
+cd /home/phucl/Workplace/gapi/ms-gym-plans
+./gradlew spotlessCheck check --no-daemon
+# observed: BUILD SUCCESSFUL
+
+## ms-gym-identifier
+cd /home/phucl/Workplace/gapi/ms-gym-identifier
+# temporary replace: github.com/pploc/proto-go => ../gym-proto/gen/go
+go test ./test/unit/...
+# observed: all packages ok
+go vet ./...
+# observed: exit 0
+go build -o /tmp/ms-gym-identifier ./cmd/server
+# observed: BUILD_OK
+
+## gym-infra
+cd /home/phucl/Workplace/gapi/gym-infra
+helm lint helm/gym-service
+# observed: 1 chart(s) linted, 0 chart(s) failed
+cd kong/tests && go test -c -o /tmp/kong-gateway-tests .
+# observed: KONG_TEST_COMPILE_OK
+# live suite not run — Docker daemon unavailable
+# Identifier→Member NetworkPolicy edge removed from
+# helm/gym-service/examples/ms-gym-member-values.yaml
+# G8 files (kong/g8-*, run-g8.sh) status clean / not modified
+
+## Version uniqueness
+git -C gym-proto tag -l 'v5.0.0'          # empty
+git -C gym-proto ls-remote --tags origin 'refs/tags/v5.0.0'  # 404 / absent
+gh api repos/pploc/proto-go/git/refs/tags/v1.5.0             # 404
+ls ~/.m2/repository/com/gym/proto/gym-proto-java/5.0.0       # local candidate only
+
+## Not run (blocked)
+./gradlew generateConfluentFixtures   # needs Schema Registry + Docker
+./kong/run-g5.sh / live gateway tests # needs Docker
+./kong/run-g8.sh                      # historical; not re-run; G8 evidence preserved
+git tag / gh release / ./gradlew publish  # publication not confirmed
+
+## Docker-backed (2026-08-10 after daemon up)
+
+cd /home/phucl/Workplace/gapi/gym-proto
+docker compose -f contracts/v1/kafka/compose.confluent-7.7.1.yml down -v
+docker compose -f contracts/v1/kafka/compose.confluent-7.7.1.yml up -d
+until curl --fail --silent http://localhost:8081/subjects >/dev/null; do sleep 2; done
+./gradlew generateConfluentFixtures -PschemaRegistryUrl=http://localhost:8081 --no-daemon
+# observed: BUILD SUCCESSFUL; clean-registry deterministic fixtures; schema ids 3/4/5
+# fixture sha256: 339824c908900c8b85aaa12d4e03070833d43dc5e35190875a37cd6738e8c0f7
+./gradlew check -PschemaRegistryUrl=http://localhost:8081 --no-daemon
+# observed: BUILD SUCCESSFUL (verifyConfluentFixtures green)
+# fixed ConfluentCompatibilityVerifier for multi-line protovalidate fields + Protobuf references
+./gradlew verifyConfluentBackwardCompatibility -PschemaRegistryUrl=http://localhost:8081 --no-daemon
+# observed: BUILD SUCCESSFUL
+# all fixture subjects report BACKWARD
+
+cd /home/phucl/Workplace/gapi/gym-infra/kong
+docker compose -f docker-compose.yml up -d --build
+# kong.yml keeps plain gRPC method paths only (no retired RPC routes)
+# removed obsolete retired-RPC gateway assertion
+cd tests && go test -v ./...
+# observed: PASS
+
+# Publication (2026-08-10)
+gh run watch 31404520393 --repo pploc/gym-proto --exit-status
+gh release view v5.0.0 --repo pploc/gym-proto
+git ls-remote --tags https://github.com/pploc/proto-go.git 'v1.5.0*'
+# Identifier pin
+go get github.com/pploc/proto-go@v1.5.0 && go mod tidy && go test -race ./... && go build ./cmd/server
+# Member/Plans against GH Packages
+./gradlew --refresh-dependencies clean compileJava compileTestJava
+./gradlew spotlessCheck check
