@@ -1,0 +1,9 @@
+gym-proto Stage 1 commit: ce660f48b41379baad10562ede78055a4ae63b0e
+gym-proto base commit: 59000df8efa312b50763c3b95694b46842d2f6df
+gym-infra HEAD: b6c4a0dba121371a4231ce208ba9838c466c3e23
+docs evidence base: 3572e0df873c3a80f2cc6214698c18608cbf04df
+
+No tag, release, consumer pin, or artifact publication was created.
+No gym-infra files changed.
+
+Local candidate verification passed before commit, including `./gradlew check --no-daemon` and deterministic OpenAPI/Kong artifact generation. GitHub Actions result is recorded separately after push.

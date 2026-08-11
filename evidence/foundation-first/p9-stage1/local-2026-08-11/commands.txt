@@ -1,0 +1,94 @@
+# Commands executed for Phase 9 Stage 1 candidate verification
+# recorded_at=2026-08-11
+
+## gym-proto
+
+```bash
+cd /home/phucl/Workplace/gapi/gym-proto
+buf format -d --exit-code proto
+buf lint proto
+buf breaking . --against '.git#tag=v5.0.0'
+buf generate
+./gradlew check --no-daemon
+git diff --check
+```
+
+Result: pass. `./gradlew check --no-daemon` completed `BUILD SUCCESSFUL`.
+
+```bash
+rm -rf gen dist
+buf generate
+./scripts/generate-openapi.sh
+./scripts/package-kong-proto.sh
+find gen -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/p9-stage1-gen-first.sha256
+sha256sum \
+  openapi/identity/v1/identity.openapi.yaml \
+  openapi/member/v1/member.openapi.yaml \
+  openapi/plans/v1/plans.openapi.yaml \
+  dist/kong-proto-6.0.0.tar.gz > /tmp/p9-stage1-first.sha256
+rm -rf gen dist
+buf generate
+./scripts/generate-openapi.sh
+./scripts/package-kong-proto.sh
+find gen -type f -print0 | sort -z | xargs -0 sha256sum > /tmp/p9-stage1-gen-second.sha256
+sha256sum \
+  openapi/identity/v1/identity.openapi.yaml \
+  openapi/member/v1/member.openapi.yaml \
+  openapi/plans/v1/plans.openapi.yaml \
+  dist/kong-proto-6.0.0.tar.gz > /tmp/p9-stage1-second.sha256
+diff -u /tmp/p9-stage1-gen-first.sha256 /tmp/p9-stage1-gen-second.sha256
+diff -u /tmp/p9-stage1-first.sha256 /tmp/p9-stage1-second.sha256
+```
+
+Result: deterministic. See `candidate-artifacts.sha256`.
+
+```bash
+# Direct source-relative Gnostic output after native openapi.v3 annotations;
+# no YAML normalizer, merger, or rewrite.
+./scripts/generate-openapi.sh
+python3 ./scripts/verify-openapi.py
+sha256sum \
+  openapi/identity/v1/identity.openapi.yaml \
+  openapi/member/v1/member.openapi.yaml \
+  openapi/plans/v1/plans.openapi.yaml
+./gradlew compileJava verifyOpenApi --no-daemon
+```
+
+Result: direct tracked documents contain Identity 12, Member 7, and Plans 8 operations; Java generated sources compile; native annotations supply standalone Bearer documentation and safe schema examples. `gen/` remains ignored only for disposable language stubs.
+
+```bash
+python3 scripts/verify-kong-errors.py --release
+```
+
+Result: deliberately rejected with `release blocked: Kong 3.8 error measurement remains pending`.
+
+```bash
+# No output for any command means target is absent.
+git tag --list v6.0.0
+git ls-remote --tags origin refs/tags/v6.0.0
+git ls-remote --tags https://github.com/pploc/proto-go.git refs/tags/v1.6.0
+gh release view v6.0.0 --repo pploc/gym-proto
+```
+
+Result: no local/remote `v6.0.0`, no remote Go `v1.6.0`, and no `gym-proto v6.0.0` release.
+
+## gym-infra Stage 0 regression
+
+```bash
+cd /home/phucl/Workplace/gapi/gym-infra/kong
+docker compose -f docker-compose.yml up -d --build --wait
+cd tests
+go test -v ./...
+cd ..
+docker compose -f docker-compose.yml down --remove-orphans
+```
+
+Result: tests passed: `ok github.com/pploc/gym-infra/kong/tests 2.703s`. Initial teardown command ran from `tests/` and failed only because its relative compose path was wrong; the explicit root compose teardown completed immediately afterward. No infrastructure files changed.
+
+## Known unrelated regression environment blocker
+
+```bash
+/home/phucl/Workplace/gapi/gym-infra/kong/run-g8.sh
+```
+
+Result: not a Stage 1 failure. `schema-seed` could not download `https://packages.confluent.io/maven/io/confluent/common-utils/8.0.7/common-utils-8.0.7.pom` while compiling fixtures. The Stage 0 isolated Kong regression above passed.
