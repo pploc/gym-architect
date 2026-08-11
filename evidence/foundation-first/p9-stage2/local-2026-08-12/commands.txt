@@ -1,0 +1,8 @@
+# Run from /home/phucl/Workplace/gapi/ms-gym-plans
+./gradlew test --tests 'com.gym.plans.unit.config.*' --tests 'com.gym.plans.integration.PlansMtlsWorkloadIntegrationTest' --no-daemon
+
+# Completion gate run from /home/phucl/Workplace/gapi/ms-gym-plans
+./gradlew startEnv
+./gradlew clean check
+./gradlew stopEnv
+git diff --check

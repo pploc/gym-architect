@@ -1,0 +1,12 @@
+docs HEAD before Stage 2 evidence: b7c79943d3647a1a73d2ba6f613de4f65ff525f0
+ms-gym-plans base: 54bc02c2bd153145b8fe116bb948593b50639ccc
+ms-gym-member reference: e6280d73069b671b9229f4cec7d6ef109f50f5a3
+common-java reference: a0e938dc508afbddf857c7cd883402d9337e4c57
+gym-proto Stage 1 candidate: ce660f48b41379baad10562ede78055a4ae63b0e
+gym-infra unchanged reference: b6c4a0dba121371a4231ce208ba9838c466c3e23
+
+Plans dependencies retained:
+com.gym:common-java:2.1.1
+com.gym.proto:gym-proto-java:5.0.0
+
+No v6.0.0/Java 6.0.0/Go v1.6.0 release, tag, package, consumer pin, or generated release artifact was created.
