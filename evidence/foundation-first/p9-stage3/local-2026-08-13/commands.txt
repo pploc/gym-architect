@@ -1,0 +1,13 @@
+# Runtime compatibility commands
+
+# Run from /home/phucl/Workplace/gapi/gym-infra
+./kong/run-g9.sh
+
+# Run from /home/phucl/Workplace/gapi/gym-proto
+./gradlew verifyKongProto --no-daemon
+./gradlew probeKongProtoTranscoding --no-daemon
+./gradlew verifyKongProtoTranscoding --no-daemon  # expected non-zero decision gate
+
+git -C /home/phucl/Workplace/gapi/gym-infra diff --check
+git -C /home/phucl/Workplace/gapi/gym-proto diff --check
+git -C /home/phucl/Workplace/gapi/docs diff --check
