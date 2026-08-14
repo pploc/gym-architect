@@ -27,7 +27,7 @@ Only Identifier, Member, and Plans are active service scope. Other service docum
 - G6: Plans/Member/Payment contracts first published as historical `v3.0.0` / `gym-proto-java:3.0.0` / `proto-go/v3@v3.0.0`.
 - G7: passed. Plans owns locations/catalog; evidence under `docs/evidence/foundation-first/g7/local-2026-08-09/`.
 - G8: passed on prior contract generation; evidence under `docs/evidence/foundation-first/g8/local-2026-08-09/`. Owner approval remains pending.
-- G9: planned. Stage 0 removes selected-gym JWT state and makes gym context explicit before Kong routes are generated. Later stages expose Member and Plans unary CRUD as HTTPS/JSON, transcode to upstream mTLS gRPC, publish generated OpenAPI 3.0, and retain Plans `8080` only for Actuator.
+- G9: in progress. Kong fronts generated Go `grpc-gateway` for Member and Plans HTTPS/JSON; gateway reaches their mTLS gRPC `50051` endpoints. Kong 3.8 source-Protobuf parsing is historical rejected behavior. Plans `8080` remains Actuator-only. Final completion requires immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized evidence, and clean committed trees.
 - **Active contract break (post-G8, in place on `*.v1`):** Java `gym-proto-java:4.1.0`, Go module `github.com/pploc/proto-go` (no `/v4` path), `common-go` 0.4.0, `common-java` 2.1.1. RPC-specific messages, prefixed closed enums, Protovalidate. Kafka topics stay `.v1` and overwrite Schema Registry subjects in place (no dual `.v2` generation). Plans still resolves `gym-proto-java:4.0.0` and must align before G9. Re-run `./kong/run-g8.sh` after published/staged service images resolve one generation; prior G8 evidence stays historical.
 
 G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 revised that boundary; G8 evidence supersedes G5 for location validation and catalog ownership. Member has no native public HTTP adapter; Phase 9 exposes its public gRPC methods as HTTPS/JSON through Kong.
@@ -45,7 +45,7 @@ No customer or production data exists. Phases 6–8 use a coordinated contract a
 7. [Phase 6 — Plans contracts](06-plans-contracts.md)
 8. [Phase 7 — `ms-gym-plans`](07-ms-gym-plans.md)
 9. [Phase 8 — Three-service integration](08-three-service-integration.md)
-10. [Phase 9 — Stable identity, Kong gRPC-Gateway, and generated OpenAPI 3.0](09-kong-grpc-gateway-openapi.md)
+10. [Phase 9 — Stable identity, generated gateway, and OpenAPI 3.0](09-kong-grpc-gateway-openapi.md)
 
 Each phase is an implementation handoff. Execute it only after prerequisites pass and preserve evidence for next gate.
 
@@ -66,7 +66,7 @@ Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-ne
 
 ## Governing rules
 
-1. `gym-proto` owns API/event schemas, auth vocabulary, error mappings, topic rules, canonical OpenAPI 3.0 generated directly from Protobuf, and other generated artifacts.
+1. `gym-proto` owns API/event schemas, auth vocabulary, error mappings, topic rules, Gnostic-generated service OpenAPI documents plus deterministic canonical OpenAPI 3.0 merge, and other generated artifacts.
 2. Common libraries own shared trusted-claim, workload-auth, observability, Kafka framing, retry, commit, and DLQ behavior.
 3. Kong establishes external stable-JWT trust and injects identity/role only. User roles and workload identities remain separate trust domains.
 4. Identifier owns identity, Member owns subscriptions, and Plans owns locations/catalog.
@@ -91,7 +91,7 @@ Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-ne
 | G6 — Plans contracts | Plans API and revised Member boundary are immutable | Buf checks, break report, artifacts, exposure/auth matrices |
 | G7 — Plans service | Plans behavior, schema, security, and deployment pass | Tests, migration report, API fixtures, image/Helm evidence |
 | G8 — Three-service integration | Identifier, Member, and Plans pass clean-boundary E2E | Three-service tests, schema inspection, mTLS and Kong evidence |
-| G9 — Browser API gateway | Kong HTTPS/JSON transcoding, generated OpenAPI 3.0, upstream mTLS, and removal of Plans business HTTP pass | Contract artifacts, route/exposure matrix, browser E2E, error compatibility matrix, mTLS and NetworkPolicy evidence |
+| G9 — Browser API gateway | Kong routes HTTPS/JSON through generated gateway, generated OpenAPI 3.0, mTLS, and removal of Plans business HTTP pass from immutable clean sources | Published artifacts, lock, route/exposure matrix, browser E2E, TypeScript check, error/mTLS/NetworkPolicy evidence, clean trees |
 
 ## Active-scope freeze
 

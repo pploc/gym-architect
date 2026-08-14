@@ -2,7 +2,7 @@
 
 ## Authoritative execution plan
 
-Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G8 foundation for Identifier, Member, and Plans is complete (owner approval pending on G8). Phase 9/G9 is planned for Kong HTTP/JSON-to-gRPC transcoding and generated OpenAPI 3.0. Deferred services stay catalog-only until a later roadmap gate.
+Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G8 foundation for Identifier, Member, and Plans is complete (owner approval pending on G8). Phase 9/G9 is in progress: Kong fronts generated Go `grpc-gateway` for Member and Plans browser APIs. Final completion needs immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized evidence, and clean committed trees. Deferred services stay catalog-only until a later roadmap gate.
 
 ## Active services
 

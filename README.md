@@ -19,7 +19,7 @@ Use [Foundation-First Platform Roadmap](plans/foundation-first/README.md). G0–
 - [Phase 6 — Plans contracts](plans/foundation-first/06-plans-contracts.md)
 - [Phase 7 — `ms-gym-plans`](plans/foundation-first/07-ms-gym-plans.md)
 - [Phase 8 — Three-service integration](plans/foundation-first/08-three-service-integration.md)
-- [Phase 9 — Stable identity, Kong gRPC-Gateway, and generated OpenAPI 3.0](plans/foundation-first/09-kong-grpc-gateway-openapi.md)
+- [Phase 9 — Stable identity, generated gateway, and OpenAPI 3.0](plans/foundation-first/09-kong-grpc-gateway-openapi.md)
 
 [`PLAN.md`](PLAN.md) is a catalog and historical dependency sketch, not an execution plan.
 

@@ -1,8 +1,8 @@
-# Phase 9 Stage 3 — Kong runtime transcode compatibility
+# Phase 9 Stage 3 — historical runtime transcode compatibility
 
 Evidence package for Stage 3 of `docs/plans/foundation-first/09-kong-grpc-gateway-openapi.md`.
 
-Historical G8, Stage 0, Stage 1, and Stage 2 evidence remain unchanged.
+Historical G8, Stage 0, Stage 1, and Stage 2 evidence remain unchanged. This stage records local fallback-runtime observations only; it is not final G9 evidence. See [Phase 9 final evidence](../p9-final/README.md) for final clean-source requirements.
 
 ## Status
 

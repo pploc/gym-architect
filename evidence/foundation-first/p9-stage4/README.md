@@ -1,6 +1,10 @@
-# Phase 9 Stage 4 — released contract and Plans MVC removal
+# Phase 9 Stage 4 — historical v6.0.0 contract and Plans MVC removal
 
-## Release lock
+## Supersession
+
+This document records prior v6.0.0 local fixture results. It is not final G9 evidence because proof used mutable/dirty source and v6.0.0 lacks canonical merged OpenAPI. See [Phase 9 final evidence](../p9-final/README.md) for final clean-source requirements.
+
+## Historical release lock
 
 | Item | Value |
 |---|---|

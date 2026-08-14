@@ -1,6 +1,6 @@
 # Phase 7 — Build `ms-gym-plans`
 
-> **Historical transport note:** G7 proved native Spring MVC business HTTP on `8080` and selected-gym administration. [Phase 9](09-kong-grpc-gateway-openapi.md) supersedes those targets with stable identity, `SUPER_ADMIN` mutations until staff assignment exists, Kong gRPC-Gateway on `50051`, and Actuator-only `8080`. Preserve G7 evidence unchanged.
+> **Historical transport note:** G7 proved native Spring MVC business HTTP on `8080` and selected-gym administration. [Phase 9](09-kong-grpc-gateway-openapi.md) supersedes those targets with stable identity, `SUPER_ADMIN` mutations until staff assignment exists, Kong routing to generated Go `grpc-gateway`, and Actuator-only `8080`. Preserve G7 evidence unchanged.
 
 ## Objective
 

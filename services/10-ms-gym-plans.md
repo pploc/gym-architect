@@ -81,7 +81,7 @@ Protobuf JSON uses lowerCamelCase fields and full enum names, such as `planType:
 
 ## Public HTTPS/JSON
 
-Kong's bundled `grpc-gateway` reads annotated Protobuf source and transcodes HTTPS/JSON to Plans mTLS gRPC `50051`. Plans has no native Spring MVC business endpoint after G9.
+Kong routes HTTPS/JSON to generated Go `grpc-gateway` over mTLS. Gateway transcodes to Plans mTLS gRPC `50051` with identity `ms-gym-api-gateway`. Kong cannot directly reach Plans `50051`. Plans has no native Spring MVC business endpoint after G9.
 
 | Method | Path | Access |
 |---|---|---|
@@ -121,9 +121,9 @@ Workload calls trust certificate identity, not `x-user-*`, `x-gym-id`, or `x-mem
 
 - Authenticated users may browse gyms and plans.
 - `SUPER_ADMIN` manages gyms and plans during G9.
-- Public gRPC methods accept end-user metadata only when peer SAN is Kong.
-- Kong strips client-forged trusted headers and injects verified identity/role metadata.
-- Native direct clients and workload certificates cannot call public methods with forged user metadata.
+- Public gRPC methods accept end-user metadata only when peer SAN is `ms-gym-api-gateway`.
+- Kong strips client-forged trusted headers and injects verified identity/role metadata; generated gateway accepts them only from Kong SAN and forwards vetted metadata.
+- Kong, native direct clients, and workload certificates cannot call public methods with forged user metadata.
 - No method is public by omission.
 
 ## Persistence
@@ -151,19 +151,19 @@ Stable `x-error-code` identifies domain condition. Internal failures are redacte
 ## Generated Contracts
 
 - Protobuf is source for messages, validation, and `google.api.http` annotations.
-- Pinned `protoc-gen-openapiv3` generates canonical OpenAPI 3.0 directly from Protobuf.
-- Browser REST clients generate from OpenAPI 3.0.
+- Gnostic `protoc-gen-openapi@v0.7.1` generates service OpenAPI documents; deterministic collision-rejecting merge produces canonical OpenAPI 3.0.
+- Browser REST clients generate from released canonical OpenAPI 3.0.
 - Backend and native gRPC clients generate from Protobuf.
-- Kong mounts immutable annotated Protobuf source bundle, not OpenAPI.
+- Generated gateway compiles route bindings; Kong does not mount or parse Protobuf source at runtime.
 
 ## Deployment
 
 - `plans_db` is isolated from Identifier and Member databases.
-- Kong reaches Plans gRPC `50051` with Kong client identity, CA validation, and server SAN verification.
-- Kong has no business route to Plans `8080`.
+- Generated gateway reaches Plans gRPC `50051` with `ms-gym-api-gateway` identity, CA validation, and server SAN verification.
+- Kong reaches only generated gateway `8443`; it has no direct Plans `50051` or `8080` business route.
 - `8080` retains Actuator health/readiness only.
 - Identifier and Member reach only their exact Plans workload methods on `50051`.
-- Port-specific NetworkPolicies separate Kong, workloads, and health/metrics callers.
+- Port-specific NetworkPolicies separate Kong, gateway, workloads, and health/metrics callers.
 - Plans has no Kafka or Schema Registry settings.
 - Production private keys come from Secrets/secret manager and are never committed.
 - Align Plans to exact G9 `gym-proto-java` release before deployment.

@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G6–G8 are complete historical gates for Identifier, Member, and Plans. Phase 9 is planned. Stage 0 replaces selected-gym JWT state with stable identity and explicit gym resource context before Kong routes and OpenAPI 3.0 are generated. See [Phase 9](../plans/foundation-first/09-kong-grpc-gateway-openapi.md).
+> **Roadmap status:** G6–G8 are complete historical gates for Identifier, Member, and Plans. Phase 9 is in progress. Generated Go `grpc-gateway` is selected after Kong 3.8 source-Protobuf parsing failed; final completion still requires immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized evidence, and clean committed trees. See [Phase 9](../plans/foundation-first/09-kong-grpc-gateway-openapi.md).
 
 ## System Context
 
@@ -38,8 +38,9 @@ Only Identifier, Member, and Plans are active. Other entries are future boundari
 flowchart LR
     Client[Browser clients] -->|HTTPS JSON + stable JWT| Kong[Kong]
     Kong -->|HTTP 8080| ID[Identifier]
-    Kong -->|gRPC-Gateway + mTLS 50051| MB[Member]
-    Kong -->|gRPC-Gateway + mTLS 50051| PL[Plans]
+    Kong -->|mTLS HTTPS 8443| GW[Generated Go grpc-gateway]
+    GW -->|mTLS gRPC 50051| MB[Member]
+    GW -->|mTLS gRPC 50051| PL[Plans]
 
     ID -->|mTLS: GetActiveGym for trainer validation| PL
     MB -->|mTLS: ResolvePurchasablePlan| PL
@@ -130,11 +131,11 @@ Never infer admin gym scope from UI state, request paths, or obsolete selected-g
 | Pattern | Phase 9 target |
 |---|---|
 | Identifier public HTTP/JSON | Client to Kong to Identifier HTTP gateway on `8080` |
-| Member and Plans public HTTP/JSON | Client to Kong `grpc-gateway` to service mTLS gRPC on `50051` |
+| Member and Plans public HTTP/JSON | Client to Kong, then mTLS generated gateway `8443`, then service mTLS gRPC `50051` |
 | Native workload gRPC | Exact caller SAN to exact method on `50051` |
 | Kafka | Identifier identity events and Member membership/payment handling only |
 
-Public Member and Plans metadata is trusted only when the peer certificate SAN is Kong. Kong strips forged trusted headers and injects verified identity/role metadata only. Path binding populates explicit `gym_id`; it is not a JWT claim.
+Public Member and Plans metadata is trusted only when the peer certificate SAN is `ms-gym-api-gateway`. Kong strips forged trusted headers and injects verified identity/role metadata only; gateway accepts that metadata only from Kong SAN, strips arbitrary inbound metadata, and forwards vetted values. Path binding populates explicit `gym_id`; it is not a JWT claim.
 
 Exact internal allowlist:
 
@@ -150,8 +151,8 @@ Internal methods have no HTTP annotation, Kong route, or OpenAPI operation. Work
 Protobuf owns messages, validation, and public `google.api.http` annotations. Generated artifacts are:
 
 - Java and Go service/native-client types from Protobuf;
-- canonical OpenAPI 3.0 containing exactly 12 Identity, seven Member, and eight Plans browser operations, generated directly from Protobuf with `protoc-gen-openapiv3` pinned to a reviewed tag and commit;
-- immutable runtime Protobuf source bundle for Kong.
+- canonical OpenAPI 3.0 containing exactly 12 Identity, seven Member, and eight Plans browser operations, generated from Gnostic `protoc-gen-openapi@v0.7.1` service outputs and deterministic collision-rejecting merge;
+- released Protobuf source bundle for contract verification, not Kong runtime transcoding.
 
 Browser REST clients generate from released OpenAPI 3.0. Backend and native gRPC clients generate from Protobuf. Do not handwrite parallel Swagger schemas or backend DTOs from OpenAPI.
 
@@ -165,7 +166,7 @@ Browser REST clients generate from released OpenAPI 3.0. Backend and native gRPC
 | Membership owner | Member | Keeps lifecycle, validation, and events with subscription state |
 | Purchase terms | Frozen in Member before Payment | Completion remains deterministic after catalog changes |
 | Database isolation | DB per service, opaque cross-service IDs | Prevents schema coupling and cross-service joins |
-| Public trust | Kong SAN plus verified identity metadata | Prevents direct-header spoofing |
+| Public trust | Generated gateway SAN plus vetted identity metadata | Prevents direct-header spoofing |
 | Internal trust | Caller-specific mTLS and exact method allowlists | Prevents workload privilege confusion |
 | Admin gym scope | `SUPER_ADMIN` until staff assignment exists | Request gym context is not authorization |
 | Browser contract | Generated OpenAPI 3.0 | Describes HTTP paths, security, schemas, and errors |
