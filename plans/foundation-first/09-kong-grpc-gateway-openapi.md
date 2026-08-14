@@ -1,6 +1,16 @@
 # Phase 9 — Stable Identity, Kong gRPC-Gateway, and Generated OpenAPI 3.0
 
-> **Status:** planned. Execute only after the active `gym-proto` generation is published and all three active services resolve the same contract generation.
+> **Status:** Stage 4 implementation. `gym-proto v6.0.0`, Java `6.0.0`, and Go `v1.6.0` are released; generated Go `grpc-gateway` supersedes Kong's incompatible source-Protobuf parser. Historical design sections remain evidence of the original decision process.
+
+## Stage 4 supersession
+
+Kong 3.8's bundled source-Protobuf parser failed on `buf/validate/validate.proto:535:9`. The selected runtime is generated Go `grpc-gateway` behind Kong:
+
+```text
+Browser HTTPS/JSON → Kong JWT/CORS/exact routes → mTLS generated Go grpc-gateway → mTLS Member/Plans gRPC
+```
+
+The released G9 lock is `gym-infra/kong/g9-release-lock.json`. It pins `gym-proto v6.0.0` source, release assets, Java `6.0.0`, Go `v1.6.0`, Kong image digest, and 27-route manifest. Plans native MVC business routes are removed; port `8080` remains Actuator/probes/metrics only.
 
 ## Objective
 
