@@ -2,7 +2,7 @@
 
 ## Authoritative execution plan
 
-Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G8 foundation for Identifier, Member, and Plans is complete (owner approval pending on G8). Phase 9/G9 is in progress: Kong fronts generated Go `grpc-gateway` for Member and Plans browser APIs. Final completion needs immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized evidence, and clean committed trees. Deferred services stay catalog-only until a later roadmap gate.
+Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G9 foundation for Identifier, Member, and Plans is technically complete; owner approval remains separate. G9 uses Kong in front of generated Go `grpc-gateway` for Member and Plans browser APIs. Final immutable-release, locked clean-source, protected-CI, and sanitized-evidence proof is recorded in [`evidence/foundation-first/p9-final/README.md`](evidence/foundation-first/p9-final/README.md). Deferred services stay catalog-only until a later roadmap gate.
 
 ## Active services
 

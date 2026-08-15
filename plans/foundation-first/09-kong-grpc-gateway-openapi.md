@@ -1,6 +1,6 @@
 # Phase 9 — Stable Identity, Generated Gateway, and OpenAPI 3.0
 
-> **Status:** In progress. Runtime behavior has passed local fixture checks, but G9 is not complete until immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized final evidence, and clean committed trees pass.
+> **Status:** Complete on 2026-08-15. Immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized final evidence, and recorded clean product trees passed. See [final evidence](../../evidence/foundation-first/p9-final/README.md).
 
 ## Selected architecture
 
