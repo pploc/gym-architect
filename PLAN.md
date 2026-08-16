@@ -2,15 +2,16 @@
 
 ## Authoritative execution plan
 
-Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G9 foundation for Identifier, Member, and Plans is technically complete; owner approval remains separate. G9 uses Kong in front of generated Go `grpc-gateway` for Member and Plans browser APIs. Final immutable-release, locked clean-source, protected-CI, and sanitized-evidence proof is recorded in [`evidence/foundation-first/p9-final/README.md`](evidence/foundation-first/p9-final/README.md). Deferred services stay catalog-only until a later roadmap gate.
+Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G9 foundation for Identifier, Member, and Plans is technically complete; owner approval remains separate. G9 uses Kong in front of generated Go `grpc-gateway` for Member and Plans browser APIs. Final immutable-release, locked clean-source, protected-CI, and sanitized-evidence proof is recorded in [`evidence/foundation-first/p9-final/README.md`](evidence/foundation-first/p9-final/README.md). G10 now plans `ms-gym-checkin`; implementation has not started. Other deferred services stay catalog-only until a later roadmap gate.
 
-## Active services
+## Active and planned services
 
-| Service | Stack | Database | Ownership |
-|---|---|---|---|
-| `ms-gym-identifier` | Go + Gin | PostgreSQL `identity_db` | Identity, credentials, and stable identity tokens |
-| `ms-gym-member` | Java 26 + Spring Boot 4 | PostgreSQL `member_db` | Profiles, subscriptions, membership lifecycle and validation |
-| `ms-gym-plans` | Java 26 + Spring Boot 4 | PostgreSQL `plans_db` | Gym locations, gym-specific plans, VND pricing |
+| Service | Status | Stack | Database | Ownership |
+|---|---|---|---|---|
+| `ms-gym-identifier` | Implemented | Go + Gin | PostgreSQL `identity_db` | Identity, credentials, and stable identity tokens |
+| `ms-gym-member` | Implemented | Java 26 + Spring Boot 4 | PostgreSQL `member_db` | Profiles, subscriptions, membership lifecycle and validation |
+| `ms-gym-plans` | Implemented | Java 26 + Spring Boot 4 | PostgreSQL `plans_db` | Gym locations, gym-specific plans, VND pricing |
+| `ms-gym-checkin` | G10 planned; not started | Go gRPC + `net/http` health | YugabyteDB `checkin_db` | Encrypted QR keys, logged-in iPad display payloads, scan validation, check-in records, and `checkin.recorded.v1` |
 
 ## Deferred catalog
 
@@ -19,7 +20,6 @@ These services remain documented for architecture continuity but have no actiona
 | Service | Intended stack | Intended database | Future role |
 |---|---|---|---|
 | `ms-gym-payment` | Java 26 + Spring Boot 4 | PostgreSQL | Provider payments, refunds, transaction history |
-| `ms-gym-checkin` | Go + Gin | YugabyteDB | QR validation and check-in records |
 | `ms-gym-workout` | Go + Gin | Cassandra | Workout logging |
 | `ms-gym-trainer` | Java 26 + Spring Boot 4 | PostgreSQL | Trainer schedules and bookings |
 | `ms-gym-promotion` | Java 26 + Spring Boot 4 | PostgreSQL | Discount campaigns and coupon reservations |
@@ -37,6 +37,7 @@ flowchart LR
     P --> I[Phase 8<br/>Identifier + Member + Plans integration]
     I --> S[Phase 9 Stage 0<br/>Stable identity + explicit gym context]
     S --> G[Phase 9 Stages 1-4<br/>Kong gRPC-Gateway + generated OpenAPI 3.0]
+    G --> K[Phase 10<br/>Implement ms-gym-checkin]
 ```
 
 ## Target service interaction
@@ -45,11 +46,16 @@ flowchart LR
 flowchart LR
     C[Browser] -->|browse gyms and plans through Kong| PL[Plans]
     C -->|gym-scoped membership request through Kong| MB[Member]
+    C -->|scan and history through Kong + generated gateway| CI[Check-in]
+    D[Gym owner's iPad app] -->|stable JWT display route through Kong + generated gateway| CI
     ID[Identifier] -->|GetActiveGym for trainer validation only| PL
     MB -->|ResolvePurchasablePlan gym + plan| PL
+    CI -->|ValidateMembership user + signed gym| MB
+    CI -->|ValidateCheckInGym during provisioning| PL
+    CI -->|transactional outbox| K[Kafka checkin.recorded.v1]
 ```
 
-Member keeps `PurchaseMembership`; production Payment remains deferred. G8 proved the outbound Payment port with `gym-infra/kong/fixtures/fake-payment`.
+Member keeps `PurchaseMembership`; production Payment remains deferred. G8 proved the outbound Payment port with `gym-infra/kong/fixtures/fake-payment`. Check-in remains planned until every G10 stage passes; no downstream Notification or Analytics consumer is opened.
 
 ## Change index
 
@@ -60,3 +66,4 @@ Member keeps `PurchaseMembership`; production Payment remains deferred. G8 prove
 | Subscription terms | Member spec, Plans spec, purchase flow, future Payment boundary |
 | External route | Protobuf `google.api.http` annotation, generated OpenAPI 3.0, Kong route documentation, NetworkPolicy documentation |
 | Kafka event | Kafka catalog, canonical Protobuf event, producer/consumer ownership |
+| Check-in trust or storage | Phase 10, Check-in service spec, Member/Plans workload boundaries, QR/device/key rules, Yugabyte/Vault/Kafka infrastructure |

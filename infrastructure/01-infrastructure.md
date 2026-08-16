@@ -1,8 +1,8 @@
 # Infrastructure Architecture
 
-> **Roadmap status:** G8 topology and evidence remain historical. Phase 9 is in progress. Generated Go `grpc-gateway` is selected after Kong 3.8 source-Protobuf parsing failed; completion requires immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized evidence, and clean committed trees.
+> **Roadmap status:** G0–G9 are complete. G10 plans Check-in infrastructure; no Check-in deployment, release, runtime, CI, or completion evidence exists yet. Historical G9 lock and evidence remain unchanged.
 
-## Phase 9 topology
+## G9 baseline and planned G10 topology
 
 ```mermaid
 flowchart TB
@@ -11,17 +11,23 @@ flowchart TB
     Kong -->|mTLS HTTPS 8443| GW[Generated Go grpc-gateway]
     GW -->|mTLS gRPC 50051| MB[Member]
     GW -->|mTLS gRPC 50051| PL[Plans]
+    GW -.->|G10: mTLS gRPC 50051| CI[Check-in]
 
     ID -->|mTLS 50051: GetActiveGym| PL
     MB -->|mTLS 50051: ResolvePurchasablePlan| PL
+    CI -.->|G10: ValidateMembership| MB
+    CI -.->|G10: ValidateCheckInGym| PL
     MB -->|fixture protocol| FP[G8 Fake Payment]
 
     ID --> IDDB[(identity_db)]
     MB --> MBDB[(member_db)]
     PL --> PLDB[(plans_db)]
+    CI -.-> CIDB[(checkin_db / YugabyteDB)]
+    CI -.-> Vault[Vault Transit]
     ID --> Redis[(Redis)]
     ID --> Kafka[[Kafka]]
     MB --> Kafka
+    CI -.->|checkin.recorded.v1| Kafka
     FP --> Kafka
     Kafka --> SR[Schema Registry]
 ```
@@ -37,8 +43,9 @@ Kong cannot directly reach Member or Plans `50051`. Gateway cannot call workload
 | `identity_db` | Identifier | users, refresh tokens, verification tokens |
 | `member_db` | Member | members, subscriptions, pending purchases, outbox, processed events |
 | `plans_db` | Plans | gym locations, membership plans |
+| `checkin_db` | Check-in, G10 planned | encrypted/versioned QR root keys, check-ins, transactional outbox |
 
-Only Plans owns catalog tables. Member stores opaque IDs and frozen purchased terms. Identifier stores no gym assignment. No cross-service DB FK or join is allowed.
+Only Plans owns catalog tables. Member stores opaque IDs and frozen purchased terms. Check-in stores opaque `user_id`, canonical `member_id`, and `gym_id` plus Check-in-owned state. Identifier stores no gym assignment. No cross-service DB FK or join is allowed. G10 adds no display-device table.
 
 ## Kong routes
 
@@ -66,11 +73,12 @@ services:
     routes:
       - name: member-and-plans-public-json
         protocols: [https]
-        # Generated exact method + regex allowlist for seven Member and eight Plans operations.
+        # Generated exact method + regex allowlist from active-operation manifest.
+        # G10 adds JWT-authenticated Check-in routes, including SUPER_ADMIN display retrieval.
         # Kong does not run grpc-gateway and does not mount Protobuf source.
 ```
 
-Generate exact method-plus-regex entries for all 12 Identity, seven Member, and eight Plans operations from frozen contract. Broad `/api/v1/auth`, `/api/v1`, and `/api/v1/gyms` prefix routes are forbidden. Member and Plans share `/api/v1/gyms`; membership and catalog paths must select only owning backend. Unknown paths, wrong methods, and cross-backend matches return route-level `404`. Public proxy routes are HTTPS-only; any port-80 route redirects and never proxies Bearer traffic. Internal RPCs and reflection have no Kong route.
+G9's 12 Identity, seven Member, and eight Plans operations remain historical. G10 derives its expanded exact method-plus-regex entries from the frozen active-operation manifest. Broad `/api/v1/auth`, `/api/v1`, `/api/v1/gyms`, and `/api/v1/checkin` prefix routes are forbidden. Membership, catalog, and Check-in paths must select only their owning backend. Unknown paths, wrong methods, and cross-backend matches return route-level `404`. Every Check-in browser route, including iPad display retrieval, uses Kong JWT validation. Public proxy routes are HTTPS-only; any port-80 route redirects and never proxies Bearer traffic. Internal RPCs and reflection have no Kong route.
 
 Kong 3.8 source-Protobuf `grpc-gateway` parsing failed on `buf/validate/validate.proto:535:9: field name expected`. That parser, local source mounts, descriptor/reflection route discovery, and Kong runtime Protobuf bundles are historical rejected behavior.
 
@@ -94,7 +102,8 @@ Generated gateway accepts metadata only if Kong's client certificate SAN is vali
 |---|---|---|---|
 | `ms-gym-identifier` | Plans | `GetActiveGym` | No |
 | `ms-gym-member` | Plans | `ResolvePurchasablePlan` | No |
-| `ms-gym-checkin` | Member | `ValidateMembership` | No; deferred caller |
+| `ms-gym-checkin` | Member | `ValidateMembership(user_id, gym_id)` | No; G10 planned |
+| `ms-gym-checkin` | Plans | dedicated `ValidateCheckInGym`-style method | No; G10 planned |
 | `ms-gym-notification` | Member | `ListMembersByStatus` | No; deferred caller |
 | `ms-gym-api-gateway` | Member | declared public methods only | Yes |
 | `ms-gym-api-gateway` | Plans | declared public methods only | Yes |
@@ -109,8 +118,10 @@ Policies must separate peers by destination port. Do not union callers into broa
 - Generated gateway reaches Member and Plans `50051` only.
 - Kong has no direct Member or Plans `50051` rule.
 - Identifier and Member retain only exact Plans workload paths at `50051`.
-- Check-in and Notification retain only their future Member workload paths at `50051`.
-- Health observers may reach Plans `8080` and metrics `9090` where configured.
+- Check-in reaches only its exact Member and Plans workload methods at `50051`.
+- Generated gateway reaches Check-in public methods at `50051`; Kong has no direct Check-in rule.
+- Check-in reaches Yugabyte YSQL, Vault Transit/auth, Kafka, Schema Registry lookup, DNS, and configured observability endpoints only.
+- Health observers may reach Plans and Check-in `8080`, plus metrics ports where configured.
 
 Method authorization remains exact SAN enforcement inside gRPC servers. NetworkPolicy alone is insufficient.
 
@@ -132,6 +143,13 @@ Member:
   PLANS_GRPC_CA
   PLANS_GRPC_CERT
   PLANS_GRPC_KEY
+
+Check-in (G10 planned):
+  MEMBER_GRPC_TARGET / DEADLINE / CA / CERT / KEY
+  PLANS_GRPC_TARGET / DEADLINE / CA / CERT / KEY
+  YUGABYTE_DSN through secret mount
+  VAULT_ADDR / TRANSIT_MOUNT / KEY_REFERENCE / KUBERNETES_AUTH_ROLE
+  KAFKA_BROKERS / SCHEMA_REGISTRY_URL and protected credentials
 ```
 
 Gateway requires Kong client CA, gateway server certificate/key, Member/Plans client certificate/key, and their trusted CAs through secret mounts. Production private keys belong in Kubernetes Secrets or secret manager, never committed configuration.
@@ -155,11 +173,13 @@ Actuator health on :8080 remains available to approved observers.
 
 ## Generated contract deployment
 
-`gym-proto v6.0.1` is pending. Gnostic `protoc-gen-openapi@v0.7.1` generates individual Identity, Member, and Plans documents. Deterministic collision-rejecting merge emits canonical `openapi/gym-active-api.openapi.yaml` with 12 Identity, seven Member, and eight Plans browser operations. Deferred and workload RPCs remain absent.
+`gym-proto v6.0.1` is the released G9 baseline. Gnostic `protoc-gen-openapi@v0.7.1` generated individual Identity, Member, and Plans documents. Deterministic collision-rejecting merge emitted canonical `openapi/gym-active-api.openapi.yaml` with 12 Identity, seven Member, and eight Plans browser operations. Workload RPCs remain absent.
+
+G10 must publish a new immutable matching Java/Go contract generation after its semantic compatibility review. That generation adds only approved Check-in browser operations and keeps Member/Plans workload RPCs absent. Expected operation totals come from the frozen active-operation manifest, not a hardcoded count.
 
 Frontend consumes released canonical OpenAPI. Backend/native clients consume Protobuf artifacts. Generated gateway compiles generated route bindings; Kong consumes neither Protobuf source nor OpenAPI at runtime.
 
-Final release lock must pin:
+The historical G9 release lock pins:
 
 ```text
 Detached repository SHAs
@@ -178,9 +198,18 @@ Protected authenticated G9 CI uses package/repository read credentials and Build
 
 Commit only schema-controlled sanitized final evidence. It records SHAs, versions, checksums, certificate public metadata, command labels, exit codes, and CI/release URLs. It must reject private keys, JWTs, authorization values, PII, fixture IDs, raw logs, and raw exception/transport details.
 
-## Deferred check-in infrastructure
+## Planned G10 Check-in infrastructure
 
-Check-in remains catalog-only. Future scan processing uses stable end-user identity and exact Check-in SAN to Member `ValidateMembership(member_id, gym_id)`. Kiosk provisioning still requires separately frozen Check-in-to-Plans contract. No selected-gym JWT or JWT membership state is used.
+Use existing generic chart plus official/runtime dependencies:
+
+- Check-in service on mTLS gRPC `50051`, health/readiness-only `8080`, and configured metrics port;
+- YugabyteDB YSQL `checkin_db` with least-privilege credentials and explicit migration job/path;
+- Vault Transit with Kubernetes workload auth and least-privilege encrypt/decrypt policy;
+- Kafka topic `checkin.recorded.v1`, pre-registered subject `checkin.recorded.v1-value`, and `.DLQ`;
+- generated-gateway Check-in backend and exact Kong JWT routes;
+- caller-specific mTLS certificates and port-specific NetworkPolicies.
+
+The iPad app uses normal Identifier login and stable JWT through Kong. No HTTP Basic route, kiosk/device credential, device secret, device database, or device-revocation infrastructure is planned. Display requests require `SUPER_ADMIN` and explicit active `gym_id`. Selected gym and membership status remain absent from JWT.
 
 ## CI/CD repository model
 
@@ -188,6 +217,7 @@ Check-in remains catalog-only. Future scan processing uses stable end-user ident
 - `ms-gym-identifier`: Go race tests and secret-safe image build;
 - `ms-gym-member`: Gradle checks and secret-safe image build;
 - `ms-gym-plans`: Gradle checks, Flyway, Specification tests, image and Helm checks;
-- `gym-infra`: lock validation, materialization, authenticated G9, and Helm rendering.
+- `ms-gym-checkin`: G10 Go race/integration/security checks and secret-safe image build;
+- `gym-infra`: historical G9 lock plus additive G10 lock validation, detached-source materialization, authenticated E2E, sanitizer, and Helm rendering.
 
 Java service docs retain `./gradlew startEnv` and `./gradlew stopEnv` for local dependencies.

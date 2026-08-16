@@ -1,6 +1,6 @@
 # Phase 4 — Refactor `ms-gym-member`
 
-> **Historical scope:** This phase records Member's G4 foundation validation before the Plans split. Phase 8 replaces Member's location/catalog boundary. [Phase 9 Stage 0](09-kong-grpc-gateway-openapi.md#stage-0--replace-selected-gym-jwt-state-before-gateway-generation) removes `GetMembershipStatusByUserId`, selected-gym JWT state, and Identifier-to-Member access; later G9 stages expose public Member gRPC as HTTPS/JSON through Kong. Do not reuse this phase as proof for either revised boundary.
+> **Historical scope:** This phase records Member's G4 foundation validation before the Plans split. Phase 8 replaces Member's location/catalog boundary. [Phase 9](09-kong-grpc-gateway-openapi.md) removes `GetMembershipStatusByUserId`, selected-gym JWT state, and Identifier-to-Member access; later G9 stages expose public Member gRPC as HTTPS/JSON through Kong. [Phase 10](10-ms-gym-checkin.md) supersedes the historical Check-in statements in step 5 and its example test names: Plans validates active gyms, while Member validates `user_id` plus signed `gym_id` and returns canonical `member_id`. Do not reuse this phase as proof for any revised boundary.
 
 ## Objective
 

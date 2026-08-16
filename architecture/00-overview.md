@@ -1,10 +1,10 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G6–G8 are complete historical gates for Identifier, Member, and Plans. Phase 9 is in progress. Generated Go `grpc-gateway` is selected after Kong 3.8 source-Protobuf parsing failed; final completion still requires immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized evidence, and clean committed trees. See [Phase 9](../plans/foundation-first/09-kong-grpc-gateway-openapi.md).
+> **Roadmap status:** G0–G9 are complete. G10 plans `ms-gym-checkin`; implementation has not started. Historical evidence remains unchanged. See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md).
 
 ## System Context
 
-The platform is a microservices backend for a multi-location gym chain operating in Vietnam. Four frontend clients are anticipated but remain outside this repository scope:
+The platform is a microservices backend for a multi-location gym chain operating in Vietnam. Five frontend clients or modes are anticipated but remain outside this repository scope:
 
 | Client | Users | Purpose |
 |---|---|---|
@@ -12,12 +12,13 @@ The platform is a microservices backend for a multi-location gym chain operating
 | Customer Mobile App | Gym members | Register, select a gym, purchase membership, log workouts, and book trainers |
 | Trainer Mobile App | Trainers | Manage availability, bookings, and coaching history |
 | Admin Ops Dashboard | Chain owners | Cross-location administration and analytics |
+| iPad QR Display App | Gym owner logged in as `SUPER_ADMIN` during G10 | Show current/next signed QR for selected active gym |
 
 Selecting a gym is frontend URL/request state. It does not issue another token and does not prove administrative authorization.
 
 ## Active Roadmap Scope and Service Catalog
 
-Only Identifier, Member, and Plans are active. Other entries are future boundaries, not deployed components.
+Identifier, Member, and Plans are implemented active scope. Check-in is planned active scope under G10 and is not deployed. Other entries remain future boundaries.
 
 | # | Service | Technology | Database | Ownership | Status |
 |---|---|---|---|---|---|
@@ -27,12 +28,12 @@ Only Identifier, Member, and Plans are active. Other entries are future boundari
 | 4 | Payment | Java + PostgreSQL | `payment_db` | Payments, provider webhooks, refunds | Deferred; G8 uses a fake fixture only |
 | 5 | Workout | Go + Cassandra | `workout_ks` | Workout logs, templates, personal records | Deferred |
 | 6 | Trainer | Java + PostgreSQL | `trainer_db` | Trainer profiles, availability, bookings | Deferred |
-| 7 | Check-in | Go + YugabyteDB | `checkin_db` | Kiosks, QR keys, scan validation, check-in records | Deferred |
+| 7 | Check-in | Go gRPC + YugabyteDB | `checkin_db` | QR keys, logged-in iPad display payloads, scan validation, check-in records/event | G10 planned; not started |
 | 8 | Notification | Go + Cassandra | `notification_ks` | Notification fan-out and history | Deferred |
 | 9 | Analytics | Java + YugabyteDB | `analytics_db` | Attendance, revenue, and trend projections | Deferred |
 | 10 | Promotion | Java + PostgreSQL | `promotion_db` | Promotion codes and reservations | Deferred |
 
-## Phase 9 Target Topology
+## G9 Baseline and Planned G10 Topology
 
 ```mermaid
 flowchart LR
@@ -41,17 +42,23 @@ flowchart LR
     Kong -->|mTLS HTTPS 8443| GW[Generated Go grpc-gateway]
     GW -->|mTLS gRPC 50051| MB[Member]
     GW -->|mTLS gRPC 50051| PL[Plans]
+    GW -.->|G10 planned: mTLS gRPC 50051| CI[Check-in]
 
     ID -->|mTLS: GetActiveGym for trainer validation| PL
     MB -->|mTLS: ResolvePurchasablePlan| PL
+    CI -.->|G10: ValidateMembership user + signed gym| MB
+    CI -.->|G10: ValidateCheckInGym| PL
     MB -->|G8 fixture only| FP[Fake Payment]
 
     ID --> IDDB[(identity_db)]
     MB --> MBDB[(member_db)]
     PL --> PLDB[(plans_db)]
+    CI -.-> CIDB[(checkin_db)]
+    CI -.-> Vault[Vault Transit]
     ID --> Redis[(Redis)]
     ID --> Kafka[[Kafka]]
     MB --> Kafka
+    CI -.->|G10: checkin.recorded.v1| Kafka
 ```
 
 There is no Identifier-to-Member customer-flow call. Plans `8080` remains available only for Actuator, probes, and metrics after Kong cutover; Plans business traffic uses `50051`.
@@ -133,7 +140,8 @@ Never infer admin gym scope from UI state, request paths, or obsolete selected-g
 | Identifier public HTTP/JSON | Client to Kong to Identifier HTTP gateway on `8080` |
 | Member and Plans public HTTP/JSON | Client to Kong, then mTLS generated gateway `8443`, then service mTLS gRPC `50051` |
 | Native workload gRPC | Exact caller SAN to exact method on `50051` |
-| Kafka | Identifier identity events and Member membership/payment handling only |
+| Kafka | G9: Identifier/Member topics; G10 plans Check-in transactional-outbox production |
+| Check-in display | G10: logged-in `SUPER_ADMIN` iPad app to Kong to generated gateway to Check-in |
 
 Public Member and Plans metadata is trusted only when the peer certificate SAN is `ms-gym-api-gateway`. Kong strips forged trusted headers and injects verified identity/role metadata only; gateway accepts that metadata only from Kong SAN, strips arbitrary inbound metadata, and forwards vetted values. Path binding populates explicit `gym_id`; it is not a JWT claim.
 
@@ -141,7 +149,8 @@ Exact internal allowlist:
 
 - Identifier may call Plans `GetActiveGym` for current trainer validation.
 - Member may call Plans `ResolvePurchasablePlan`.
-- Check-in may call Member `ValidateMembership` when that deferred service is implemented.
+- G10 plans Check-in to Member `ValidateMembership(user_id, signed_gym_id)`, returning canonical `member_id`, validity, and status.
+- G10 plans Check-in to Plans dedicated `ValidateCheckInGym`-style method for display/key administration; it does not broaden Identifier's `GetActiveGym`.
 - Notification may call Member `ListMembersByStatus` when that deferred service is implemented.
 
 Internal methods have no HTTP annotation, Kong route, or OpenAPI operation. Workload certificates establish service identity, not end-user roles.
@@ -153,6 +162,8 @@ Protobuf owns messages, validation, and public `google.api.http` annotations. Ge
 - Java and Go service/native-client types from Protobuf;
 - canonical OpenAPI 3.0 containing exactly 12 Identity, seven Member, and eight Plans browser operations, generated from Gnostic `protoc-gen-openapi@v0.7.1` service outputs and deterministic collision-rejecting merge;
 - released Protobuf source bundle for contract verification, not Kong runtime transcoding.
+
+G10 extends this generated contract with Check-in public operations, removes obsolete kiosk/device RPCs and fields, and keeps Member/Plans workload methods absent. Derive operation totals from the frozen active-operation manifest; do not rewrite the completed G9 count.
 
 Browser REST clients generate from released OpenAPI 3.0. Backend and native gRPC clients generate from Protobuf. Do not handwrite parallel Swagger schemas or backend DTOs from OpenAPI.
 
@@ -170,3 +181,5 @@ Browser REST clients generate from released OpenAPI 3.0. Backend and native gRPC
 | Internal trust | Caller-specific mTLS and exact method allowlists | Prevents workload privilege confusion |
 | Admin gym scope | `SUPER_ADMIN` until staff assignment exists | Request gym context is not authorization |
 | Browser contract | Generated OpenAPI 3.0 | Describes HTTP paths, security, schemas, and errors |
+| QR display | Logged-in `SUPER_ADMIN` iPad app | Reuses stable JWT flow; no kiosk/device lifecycle |
+| QR key protection | Vault Transit + Yugabyte ciphertext | Keeps plaintext root keys out of durable service storage |

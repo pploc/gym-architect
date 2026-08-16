@@ -1,6 +1,6 @@
 # Project Repository Structure
 
-> **Roadmap status:** Sibling-repository workspace. G6–G8 are historical. Phase 9 is in progress: generated Go `grpc-gateway` is selected behind Kong, and final completion requires immutable v6.0.1 artifacts plus locked clean-source evidence.
+> **Roadmap status:** Sibling-repository workspace. G0–G9 are complete. G10 plans a new sibling `ms-gym-checkin`; repository creation and implementation have not started.
 
 ## Workspace Model
 
@@ -15,10 +15,11 @@ gapi/
 ├── gym-infra/            # Compose, Kong, Helm, reusable CI/CD
 ├── ms-gym-identifier/    # Go identity service
 ├── ms-gym-member/        # Java membership service
-└── ms-gym-plans/         # Java catalog service
+├── ms-gym-plans/         # Java catalog service
+└── ms-gym-checkin/       # G10 planned Go Check-in service; not created yet
 ```
 
-Payment, Workout, Trainer, Check-in, Notification, Analytics, and Promotion remain catalog entries.
+Payment, Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Check-in is planned active scope only.
 
 ## Contract Repository
 
@@ -53,6 +54,15 @@ Phase 9 contract changes:
 - generate Java/Go artifacts from Protobuf;
 - generate exactly 12 Identity, seven Member, and eight Plans browser operations with Gnostic `protoc-gen-openapi@v0.7.1`, then deterministically merge them into canonical OpenAPI 3.0;
 - publish contract source bundle for release verification; generated gateway compiles bindings and Kong does not parse Protobuf at runtime.
+
+Planned G10 contract changes:
+
+- change Check-in's Member `ValidateMembership` request to user/gym input and return canonical `member_id`;
+- add a Check-in-only Plans gym-validation RPC;
+- remove obsolete kiosk/device RPCs and fields;
+- add generated Check-in HTTP/OpenAPI operations and `checkin.recorded.v1` wire registration.
+
+These changes are not part of completed G9 evidence.
 
 ## Active Service Repositories
 
@@ -120,6 +130,35 @@ ms-gym-plans/
 
 After G9, Plans has no Spring MVC business adapter. Spring web remains only as needed for Actuator on `8080`; business gRPC uses `50051`. Filtering uses composed JPA `Specification` objects.
 
+### `ms-gym-checkin` — G10 planned
+
+```text
+ms-gym-checkin/
+├── cmd/server/
+├── internal/
+│   ├── config/
+│   ├── domain/
+│   ├── usecase/port/
+│   └── adapter/
+│       ├── grpc/
+│       ├── yugabyte/
+│       ├── member/
+│       ├── plans/
+│       ├── vault/
+│       └── kafka/
+├── migrations/
+├── test/integration/
+├── .github/workflows/
+├── Dockerfile
+├── docker-compose.yml
+├── Makefile
+├── README.md
+├── go.mod
+└── go.sum
+```
+
+Check-in uses `50051` for business gRPC and standard `net/http` on `8080` for health/readiness only. It stores encrypted/versioned QR keys, Check-in records, idempotency state, and transactional outbox rows in YugabyteDB. A logged-in `SUPER_ADMIN` iPad app displays QR payloads; no kiosk/device table, device secret, HTTP Basic flow, or device lifecycle is planned.
+
 ## Infrastructure Repository
 
 ```text
@@ -133,12 +172,13 @@ gym-infra/
 │   ├── generated-gateway/
 │   ├── g9-business-check.sh
 │   ├── run-g9.sh
+│   ├── g10-*                       # Planned additive Check-in lock/fixture/runner
 │   └── fixtures/fake-payment/
 ├── helm/gym-service/
 └── .github/workflows/
 ```
 
-Create additive G9 fixtures rather than rewriting evidence inputs. G9 materializes locked detached sources, configures Kong-to-gateway and gateway-to-service mTLS, and renders port-specific NetworkPolicies.
+G9 fixtures and evidence remain unchanged. G10 adds its own release lock, detached-source materializer, digest-pinned runner, protected workflow, and sanitized evidence directory.
 
 ## Development Commands
 
@@ -148,8 +188,10 @@ gym-proto$ make proto
 gym-proto$ make gen-go
 gym-proto$ make gen-java
 
-# Go service
+# Go services
 ms-gym-identifier$ go test -race ./...
+ms-gym-checkin$ go test -race ./...           # after G10 creates repository
+ms-gym-checkin$ go test -tags=integration -race ./test/integration/...
 
 # Java services
 ms-gym-member$ ./gradlew startEnv
@@ -170,7 +212,8 @@ ms-gym-plans$ ./gradlew stopEnv
 - Shared behavior moves to common libraries only after more than one service proves identical need.
 - Services own domain and migrations.
 - Cross-service IDs are opaque strings and never database foreign keys.
-- Public Member/Plans routes come from inline annotations; internal workload RPCs remain unmapped.
+- Public Member/Plans/Check-in routes come from inline annotations; internal workload RPCs remain unmapped.
 - Plans and Member filtering uses Spring Data JPA Specifications, not custom persistence queries.
+- Check-in reuses `common-go`, standard-library crypto/HTTP, official Vault client, and existing generated gateway; no generic repository, shared crypto framework, or parallel gateway.
 
-See [Phase 9](../plans/foundation-first/09-kong-grpc-gateway-openapi.md) and [Plans service](../services/10-ms-gym-plans.md).
+See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md), [Check-in service](../services/06-ms-gym-checkin.md), and [Plans service](../services/10-ms-gym-plans.md).

@@ -1,6 +1,6 @@
 # Business Flows
 
-> **Scope:** G8 evidence remains historical. Phase 9 Stage 0 replaces selected-gym JWTs with stable identity and explicit gym resource context before Kong/OpenAPI generation. Production Payment, Check-in, Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
+> **Scope:** G0–G9 evidence remains historical. G10 plans Check-in with stable identity, a logged-in `SUPER_ADMIN` iPad QR display, live Member validation, and Plans-owned gym validation. Production Payment, Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
 
 ## 1. Stable Identity Authentication
 
@@ -141,39 +141,75 @@ During G9:
 
 A future staff-assignment boundary must define ownership, persistence, revocation, lookup, and tests before gym-scoped `ADMIN` access returns.
 
-## 5. Deferred QR Check-in
+## 5. Planned G10 QR Check-in
 
-Check-in remains deferred. Plans owns locations and Member owns membership decisions. Kiosk provisioning stays blocked until a Check-in-authorized Plans contract is frozen.
+Check-in is planned but not started. Plans owns locations; Member owns member identity and membership decisions. The QR display is a simple iPad app used after the gym owner logs in. G10 has no kiosk registration, device secret, HTTP Basic flow, `device_id`, or independent display revocation.
+
+### Display flow
+
+```mermaid
+sequenceDiagram
+    actor O as Gym owner / Super admin
+    participant IP as iPad app
+    participant K as Kong
+    participant GW as Generated gateway
+    participant CS as Check-in
+    participant PL as Plans
+    participant V as Vault Transit
+    participant DB as checkin_db
+
+    O->>IP: Log in and select gym
+    IP->>K: GetDisplayQrPayload(gym_id) + stable JWT
+    K->>GW: Validate JWT; forward verified sub/role
+    GW->>CS: Display request with explicit gym_id
+    CS->>CS: Require SUPER_ADMIN
+    CS->>PL: ValidateCheckInGym(gym_id) over Check-in mTLS
+    PL-->>CS: Active canonical gym
+    CS->>DB: Load or create current encrypted key version
+    CS->>V: Encrypt new key or decrypt on bounded-cache miss
+    CS-->>IP: Current and next 60-second signed QR payloads
+    IP-->>O: Full-screen rotating QR
+```
+
+`gym_id` is explicit resource context, not authorization proof. G10 uses `SUPER_ADMIN` because no authoritative owner/admin-to-gym assignment exists.
+
+### Scan and outbox flow
 
 ```mermaid
 sequenceDiagram
     actor M as Member
     participant APP as Mobile app
-    participant D as Display kiosk
-    participant CS as Future Check-in
+    participant IP as iPad display
+    participant K as Kong
+    participant GW as Generated gateway
+    participant CS as Check-in
+    participant DB as checkin_db
     participant MB as Member
     participant KF as Kafka
 
-    D-->>APP: Signed 60-second gym/device QR
+    IP-->>APP: Signed 60-second gym/key QR
     M->>APP: Scan
-    APP->>CS: ProcessScan with stable identity and explicit request context
-    CS->>CS: Validate signed gym, device, key, slot, and HMAC
-    CS->>MB: ValidateMembership(member_id, gym_id) over Check-in mTLS
-    MB-->>CS: valid, live status
+    APP->>K: ProcessScan(gym_id, qr_payload, idempotency_key) + JWT
+    K->>GW: Validate JWT; forward verified sub/role
+    GW->>CS: Generated gRPC request
+    CS->>CS: Derive user_id from sub; verify signed gym, key, slot, and HMAC
+    CS->>DB: Resolve (user_id, idempotency_key)
+    CS->>MB: ValidateMembership(user_id, signed_gym_id) over Check-in mTLS
+    MB-->>CS: canonical member_id, valid, live status
     alt Active membership
-        CS->>CS: Insert check-in and outbox atomically
-        CS->>KF: checkin.recorded.v1
-        CS-->>APP: Success
-    else Invalid
-        CS-->>APP: Failure
+        CS->>DB: Insert check-in, idempotency result, and outbox atomically
+        CS-->>APP: Stored success
+        CS->>KF: Relay checkin.recorded.v1 at least once
+    else Invalid or conflicting request
+        CS-->>APP: Safe categorized failure
     end
 ```
 
-Check-in never trusts JWT `membership_status`, never calls Member for location data, and never treats request `gym_id` alone as authority.
+Check-in never trusts JWT `membership_status`, never calls Member for location data, never lets the client choose canonical `member_id`, and never treats request `gym_id` alone as authority. Exact canonical replay returns the original success; changed input under the same key conflicts; distinct keys may record distinct check-ins.
 
 ## 6. Deferred Catalog Flows
 
-These remain designs, not G9 implementation commitments:
+These remain designs, not G10 implementation commitments:
 
 - Workout logging and explicit Member membership validation
 - Trainer search, availability, booking, payment, and approval

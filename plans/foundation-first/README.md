@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Finish shared foundations, then establish three service boundaries in dependency order:
+Finish shared foundations, then establish service boundaries in dependency order:
 
 ```text
 contract freeze
@@ -16,9 +16,10 @@ contract freeze
   -> Identifier + Member + Plans integration
   -> stable identity + explicit gym resource context
   -> Kong gRPC-Gateway + generated OpenAPI 3.0
+  -> ms-gym-checkin contracts, service, and locked integration
 ```
 
-Only Identifier, Member, and Plans are active service scope. Other service documents are catalog-only until a later roadmap explicitly opens them.
+Identifier, Member, and Plans are implemented active scope. Check-in is planned active scope under G10; implementation has not started. Other service documents remain catalog-only until a later roadmap explicitly opens them.
 
 ## Current status
 
@@ -28,7 +29,8 @@ Only Identifier, Member, and Plans are active service scope. Other service docum
 - G7: passed. Plans owns locations/catalog; evidence under `docs/evidence/foundation-first/g7/local-2026-08-09/`.
 - G8: passed on prior contract generation; evidence under `docs/evidence/foundation-first/g8/local-2026-08-09/`. Owner approval remains pending.
 - G9: passed on 2026-08-15. Kong fronts generated Go `grpc-gateway` for Member and Plans HTTPS/JSON; gateway reaches their mTLS gRPC `50051` endpoints. Kong 3.8 source-Protobuf parsing remains historical rejected behavior. Plans `8080` remains Actuator-only. Immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized evidence, and recorded clean product trees passed; see [`p9-final`](../../evidence/foundation-first/p9-final/README.md).
-- **Active contract break (post-G8, in place on `*.v1`):** Java `gym-proto-java:4.1.0`, Go module `github.com/pploc/proto-go` (no `/v4` path), `common-go` 0.4.0, `common-java` 2.1.1. RPC-specific messages, prefixed closed enums, Protovalidate. Kafka topics stay `.v1` and overwrite Schema Registry subjects in place (no dual `.v2` generation). Plans still resolves `gym-proto-java:4.0.0` and must align before G9. Re-run `./kong/run-g8.sh` after published/staged service images resolve one generation; prior G8 evidence stays historical.
+- G10: planned, not started. Phase 10 opens only `ms-gym-checkin`: user-based live membership validation, a logged-in `SUPER_ADMIN` iPad QR display, Plans-owned active-gym validation, Vault Transit-protected QR keys, YugabyteDB records/outbox, `checkin.recorded.v1`, and generated-gateway/Kong exposure. No G10 implementation, release, runtime, CI, owner-acceptance, or completion evidence exists yet.
+- **Current released G9 contract baseline:** immutable `gym-proto` v6.0.1, Java `gym-proto-java:6.0.1`, Go `github.com/pploc/proto-go` v1.6.1, `common-go` v0.4.0, and `common-java` v2.1.1. Phase 10 must classify its coordinated semantic break from actual compatibility checks, then publish one matching immutable generation. Prior G8 and G9 evidence stays historical.
 
 G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 revised that boundary; G8 evidence supersedes G5 for location validation and catalog ownership. Member has no native public HTTP adapter; Phase 9 exposes its public gRPC methods as HTTPS/JSON through Kong.
 
@@ -46,23 +48,27 @@ No customer or production data exists. Phases 6–8 use a coordinated contract a
 8. [Phase 7 — `ms-gym-plans`](07-ms-gym-plans.md)
 9. [Phase 8 — Three-service integration](08-three-service-integration.md)
 10. [Phase 9 — Stable identity, generated gateway, and OpenAPI 3.0](09-kong-grpc-gateway-openapi.md)
+11. [Phase 10 — Implement `ms-gym-checkin`](10-ms-gym-checkin.md)
 
 Each phase is an implementation handoff. Execute it only after prerequisites pass and preserve evidence for next gate.
 
 ## Target ownership
 
-| Boundary | Identifier | Member | Plans |
-|---|:---:|:---:|:---:|
-| Users, credentials, JWTs | owner | — | — |
-| Stable identity JWT | owner | — | — |
-| Customer-selected gym context | — | validates request ownership and membership | validates gym, plan, and purchasable terms |
-| Member profile | — | owner | — |
-| Subscription and lifecycle | — | owner | — |
-| Gym location | opaque reference | opaque reference | owner |
-| Plan catalog and price | — | purchased snapshot | owner |
-| Membership validation | — | owner | — |
+| Boundary | Identifier | Member | Plans | Check-in |
+|---|:---:|:---:|:---:|:---:|
+| Users, credentials, JWTs | owner | opaque `user_id` | — | trusts verified `sub`; stores opaque `user_id` |
+| Stable identity JWT | owner | consumes | — | consumes on customer routes |
+| Customer-selected gym context | — | validates live membership | validates gym and purchasable terms | validates signed QR gym against Member |
+| Member profile | — | owner | — | opaque canonical `member_id` |
+| Subscription and lifecycle | — | owner | — | validates live status through Member |
+| Gym location | opaque reference | opaque reference | owner | validates provisioning through Plans |
+| Plan catalog and price | — | purchased snapshot | owner | — |
+| Membership validation | — | owner | — | consumer through exact workload RPC |
+| Logged-in QR display | owner of login/JWT | — | validates active gym | issues payload for `SUPER_ADMIN` |
+| QR root keys and signed payloads | — | — | — | owner |
+| Check-in records and recorded event | — | — | — | owner |
 
-Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-negative `int64 price_vnd` and VND only. Cross-service IDs are opaque strings and never cross-service database foreign keys.
+Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-negative `int64 price_vnd` and VND only. Cross-service IDs are opaque strings and never cross-service database foreign keys. Check-in does not copy Plans location or Member membership authority.
 
 ## Governing rules
 
@@ -73,10 +79,13 @@ Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-ne
 5. Member orchestrates membership purchase and obtains trusted terms from Plans. Client input never supplies authoritative price, type, or duration.
 6. Member stores purchased terms on subscription. Later catalog edits affect only later purchases.
 7. Plans V1 has no Kafka producer, consumer, topic, outbox, or cache.
-8. Releases are immutable and tag-derived. Technical pass and owner approval remain separate.
-9. Customer gym selection is explicit request resource context, not JWT state or authorization proof.
-10. No custom persistence queries for Plans or Member filters; compose Spring Data JPA Specifications.
-11. No work for deferred services unless needed to preserve an explicit boundary reference.
+8. Check-in owns encrypted/versioned QR root keys, signed QR payloads, Check-in records, transactional outbox, and `checkin.recorded.v1`; Plans and Member remain authoritative for gyms and memberships.
+9. Check-in customer identity comes from verified JWT `sub`; a client cannot select the canonical member identity used for a scan.
+10. A logged-in iPad app requests display payloads with a stable JWT. G10 permits only `SUPER_ADMIN`; there is no kiosk credential or device lifecycle. Durable QR root-key material is protected by Vault Transit.
+11. Releases are immutable and tag-derived. Technical pass and owner approval remain separate.
+12. Customer gym selection is explicit request resource context, not JWT state or authorization proof.
+13. No custom persistence queries for Plans or Member filters; compose Spring Data JPA Specifications.
+14. No work for deferred services unless needed to preserve an explicit active-boundary reference.
 
 ## Readiness gates
 
@@ -92,10 +101,13 @@ Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-ne
 | G7 — Plans service | Plans behavior, schema, security, and deployment pass | Tests, migration report, API fixtures, image/Helm evidence |
 | G8 — Three-service integration | Identifier, Member, and Plans pass clean-boundary E2E | Three-service tests, schema inspection, mTLS and Kong evidence |
 | G9 — Browser API gateway | Kong routes HTTPS/JSON through generated gateway, generated OpenAPI 3.0, mTLS, and removal of Plans business HTTP pass from immutable clean sources | Published artifacts, lock, route/exposure matrix, browser E2E, TypeScript check, error/mTLS/NetworkPolicy evidence, clean trees |
+| G10 — Check-in service | Check-in contracts, service, YugabyteDB/Vault/Kafka integration, generated browser routes, and locked clean-source E2E pass | Immutable dependencies, Member/Plans workload matrix, QR/key/idempotency/rotation reports, explicit no-device-lifecycle checks, DB/outbox/event proof, gateway/Kong/NetworkPolicy evidence, locked local and protected CI, sanitized evidence, clean trees |
 
 ## Active-scope freeze
 
-G8 closed Identifier/Member/Plans business ownership. Phase 9 reopens only their public gateway, transport trust, generated contract artifacts, and Plans HTTP-adapter boundary. Do not start implementation phases for Payment, Check-in, Workout, Trainer, Promotion, Notification, or Analytics until a later roadmap gate. Their docs may be corrected only to preserve Identifier/Member/Plans boundaries.
+G8 closed Identifier/Member/Plans business ownership. G9 added their generated public gateway and transport boundary. Phase 10 opens only Check-in plus exact dependency changes in `gym-proto`, `common-go`, Member, Plans, generated gateway, Kong, and shared infrastructure. G10 does not reopen Identifier ownership or authorize copied Member/Plans state.
+
+Payment, Workout, Trainer, Promotion, Notification, and Analytics remain deferred. Do not implement them, add Check-in consumers for them, or treat their catalog documents as active plans.
 
 Allowed repositories for Phases 6–8 (historical scope list):
 

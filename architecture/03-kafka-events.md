@@ -1,12 +1,12 @@
 # Kafka Event Catalog
 
-> **Roadmap status:** The nine-topic v1 wire-format inventory below is the released freeze. `identity.email.verification-requested.v1` exists on the current development branch but is not in that released inventory. G8 uses a fake Payment fixture for integration proof. Other event messages may have Protobuf definitions while their producers, consumers, and deployment remain deferred. Plans V1 has no Kafka participation.
+> **Roadmap status:** G9's released Kafka baseline remains historical. The current `common-go` frozen topic/type map also includes `identity.email.verification-requested.v1`. G10 plans `checkin.recorded.v1`; its contract, producer, subject, and deployment do not exist as released G10 evidence yet. Plans has no Kafka participation.
 
 Kafka values use concrete Protobuf messages with Schema Registry framing. Kafka is greenfield: no JSON topics, envelopes, or deployed offsets require compatibility adapters.
 
 Closed event fields use `common.v1` prefixed enums (for example `PaymentType.PAYMENT_TYPE_MEMBERSHIP`, `Role.ROLE_CUSTOMER`). Domain persistence and JWT claims still store short names (`MEMBERSHIP`, `CUSTOMER`); map only at the wire boundary.
 
-## Frozen v1 Topics
+## Released G9 Baseline Topics
 
 | Event | Topic | Subject | Producer through G8 |
 |---|---|---|---|
@@ -20,7 +20,7 @@ Closed event fields use `common.v1` prefixed enums (for example `PaymentType.PAY
 | `MembershipExpiringSoonEvent` | `membership.expiring-soon.v1` | `membership.expiring-soon.v1-value` | Member |
 | `MembershipExpiredEvent` | `membership.expired.v1` | `membership.expired.v1-value` | Member |
 
-The current branch also defines `EmailVerificationRequestedEvent` for `identity.email.verification-requested.v1`; it remains outside the released nine-topic wire-format inventory until a later contract release includes it. Other Protobuf event messages in this catalog are versioned schema definitions, but their topics, producers, consumers, and deployments remain deferred.
+`EmailVerificationRequestedEvent` and `identity.email.verification-requested.v1` are present in the current generated contract and `common-go` frozen map. Historical nine-topic evidence remains unchanged. Other Protobuf event messages do not imply an implemented producer, consumer, or deployment.
 
 Topic names follow `{domain}.{entity}.{action}.v1`. Subjects use `TopicNameStrategy` (`<topic>-value`). Production uses `auto.register.schemas=false`. Member's consumer group is `ms-gym-member-v1`; DLQ topics use `{topic}.DLQ`.
 
@@ -175,16 +175,19 @@ These topic families remain deferred:
 | Payment | `payment.failed`, `payment.refunded` |
 | Workout | `workout.logged` |
 | Trainer booking | `booking.requested`, `booking.accepted`, `booking.rejected`, `booking.completed`, `booking.cancelled`, `booking.expired`, `booking.auto-rejected` |
-| Check-in | `checkin.recorded.v1` |
 | Promotion | `promotion.published` |
 | Trainer lifecycle | `trainer.created`, `trainer.suspended` |
 | Analytics | `analytics.member-at-risk` |
 
-### Deferred Check-in boundary
+## Planned G10 Check-in Event
 
-A future `checkin.recorded.v1` may carry opaque `member_id`, `gym_id`, `device_id`, and `checked_in_at`. Location, kiosk, and QR-key lifecycle remain synchronous/admin concerns, not Kafka events.
+| Topic | Key | Concrete value | Subject | Producer status |
+|---|---|---|---|---|
+| `checkin.recorded.v1` | canonical `member_id` | `events.v1.CheckInRecordedEvent` | `checkin.recorded.v1-value` | G10 planned; not started |
 
-Plans owns canonical locations, but Plans V1 authorizes no Check-in caller. A later workload contract must be frozen before kiosk provisioning. Check-in must not call Member for location lookup. Future scan processing may still call Member `ValidateMembership` under a separate verified workload policy.
+Stage 0 freezes generated fields for canonical `member_id`, opaque `gym_id`, and typed `checked_in_at`. The event has no `device_id`: the QR display is a logged-in iPad app with no device lifecycle. Location, display, and QR-key lifecycle remain synchronous/admin concerns, not Kafka events.
+
+Check-in writes the record and outbox row in one Yugabyte transaction. Relay uses generated Protobuf, Confluent framing, `TopicNameStrategy`, canonical headers, lookup-only Schema Registry with `auto.register.schemas=false`, at-least-once delivery, and `checkin.recorded.v1.DLQ`. No Notification or Analytics consumer is opened in G10.
 
 ## Delivery Semantics
 

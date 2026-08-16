@@ -2,7 +2,7 @@
 
 > **Tech:** Java 26 + Spring Boot 4 | **DB:** PostgreSQL `member_db` | **Business port:** 50051 native mTLS gRPC
 >
-> **Roadmap status:** G8 complete. Phase 9 Stage 0 adds explicit gym-scoped requests and removes Identifier lookup; Kong later exposes public HTTPS/JSON by transcoding to Member `50051`. Historical G4/G5 evidence is pre-split. G8 evidence: `docs/evidence/foundation-first/g8/local-2026-08-09/`.
+> **Roadmap status:** G9 complete. G10 is planned and changes only the Check-in-only `ValidateMembership` request/response boundary described below. Historical G4/G5/G8/G9 evidence remains unchanged.
 
 ## Responsibilities
 
@@ -16,7 +16,7 @@
 
 Member does not own gym locations, plan catalog data, plan availability, duration definitions, or VND list price. [Plans](10-ms-gym-plans.md) owns those records. Member stores only opaque `gym_id` and `plan_id` references.
 
-Payment and Check-in remain deferred production services. G8 uses a minimal fake Payment fixture only to prove purchase correlation, completion validation, and replay.
+Payment remains deferred. Check-in is planned under G10 but not implemented. G8 uses a minimal fake Payment fixture only to prove purchase correlation, completion validation, and replay.
 
 ## State Machine
 
@@ -253,16 +253,33 @@ SAN → method matrix:
 |----------|----------------|
 | `ms-gym-checkin` | `ValidateMembership` |
 | `ms-gym-notification` | `ListMembersByStatus` |
-| `kong` | all end-user ROLE_RESTRICTED methods |
+| `ms-gym-api-gateway` | all declared end-user role-restricted methods |
 
 - Member may call only Plans `ResolvePurchasablePlan` using its own certificate and independent client configuration.
 - Internal methods have no HTTP mapping or Kong route.
 - End-user claim headers are accepted only from Kong SAN; internal certs cannot forge them.
-- NetworkPolicy admits gRPC only from Kong, Check-in, and Notification on caller-specific rules. Identifier has no Member edge after Stage 0.
+- NetworkPolicy admits gRPC only from generated gateway, Check-in, and Notification on caller-specific rules. Identifier has no Member edge after Phase 9 Stage 0.
 
-## Deferred Check-in Boundary
+## Planned G10 Check-in Boundary
 
-Plans owns location data; Member owns membership decisions. Future scan processing may call Member `ValidateMembership(member_id, gym_id)`. Kiosk provisioning must not call Member for location data. Plans V1 has no Check-in-authorized method, so a future Check-in-to-Plans workload contract must be frozen before provisioning implementation begins.
+Plans owns location data; Member owns membership decisions. Phase 10 changes the internal Check-in-only contract to:
+
+```protobuf
+message ValidateMembershipRequest {
+  string user_id = 1;
+  string gym_id = 2;
+}
+
+message ValidateMembershipResponse {
+  string member_id = 1;
+  bool valid = 2;
+  common.v1.MembershipStatus status = 3;
+}
+```
+
+Field numbers above are finalized during the coordinated contract break. Check-in derives `user_id` from verified JWT `sub` and `gym_id` from the signed QR. Member resolves canonical `member_id` and live gym-specific membership state. Client input never selects canonical member identity.
+
+Member implements this lookup with existing Spring Data JPA repositories and `Specification` composition, not a custom persistence query. Only `ms-gym-checkin` SAN may call the method; no HTTP mapping, Kong route, OpenAPI operation, or forwarded end-user metadata exists. The logged-in iPad display and active-gym validation belong to Check-in/Plans, not Member.
 
 ## Target Structure
 
