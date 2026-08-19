@@ -1,6 +1,6 @@
 # Business Flows
 
-> **Scope:** G0–G9 evidence remains historical. G10 plans Check-in with stable identity, a logged-in `SUPER_ADMIN` iPad QR display, live Member validation, and Plans-owned gym validation. Production Payment, Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
+> **Scope:** G0–G9 evidence remains historical. G10 is in progress with Stage 2 Check-in implementation underway with stable identity, a logged-in `SUPER_ADMIN` iPad QR display, live Member validation, and Plans-owned gym validation. Production Payment, Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
 
 ## 1. Stable Identity Authentication
 
@@ -143,7 +143,7 @@ A future staff-assignment boundary must define ownership, persistence, revocatio
 
 ## 5. Planned G10 QR Check-in
 
-Check-in is planned but not started. Plans owns locations; Member owns member identity and membership decisions. The QR display is a simple iPad app used after the gym owner logs in. G10 has no kiosk registration, device secret, HTTP Basic flow, `device_id`, or independent display revocation.
+G10 is in progress and Stage 2 Check-in implementation is underway. Plans owns locations; Member owns member identity and membership decisions. The QR display is a simple iPad app used after the gym owner logs in. G10 has no kiosk registration, device secret, HTTP Basic flow, `device_id`, or independent display revocation.
 
 ### Display flow
 
@@ -155,7 +155,7 @@ sequenceDiagram
     participant GW as Generated gateway
     participant CS as Check-in
     participant PL as Plans
-    participant V as Vault Transit
+    participant KMS as AWS KMS
     participant DB as checkin_db
 
     O->>IP: Log in and select gym
@@ -166,7 +166,7 @@ sequenceDiagram
     CS->>PL: ValidateCheckInGym(gym_id) over Check-in mTLS
     PL-->>CS: Active canonical gym
     CS->>DB: Load or create current encrypted key version
-    CS->>V: Encrypt new key or decrypt on bounded-cache miss
+    CS->>KMS: Encrypt new 32-byte key or decrypt on bounded-cache miss
     CS-->>IP: Current and next 60-second signed QR payloads
     IP-->>O: Full-screen rotating QR
 ```

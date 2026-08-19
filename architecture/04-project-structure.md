@@ -1,6 +1,6 @@
 # Project Repository Structure
 
-> **Roadmap status:** Sibling-repository workspace. G0–G9 are complete. G10 plans a new sibling `ms-gym-checkin`; repository creation and implementation have not started.
+> **Roadmap status:** Sibling-repository workspace. G0–G9 are complete. G10 is in progress; the `ms-gym-checkin` sibling repository exists and Stage 2 implementation is underway. Release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending.
 
 ## Workspace Model
 
@@ -16,10 +16,10 @@ gapi/
 ├── ms-gym-identifier/    # Go identity service
 ├── ms-gym-member/        # Java membership service
 ├── ms-gym-plans/         # Java catalog service
-└── ms-gym-checkin/       # G10 planned Go Check-in service; not created yet
+└── ms-gym-checkin/       # G10 Go Check-in service; Stage 2 implementation underway
 ```
 
-Payment, Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Check-in is planned active scope only.
+Payment, Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Check-in is active G10 scope; Stage 2 implementation is underway.
 
 ## Contract Repository
 
@@ -130,7 +130,7 @@ ms-gym-plans/
 
 After G9, Plans has no Spring MVC business adapter. Spring web remains only as needed for Actuator on `8080`; business gRPC uses `50051`. Filtering uses composed JPA `Specification` objects.
 
-### `ms-gym-checkin` — G10 planned
+### `ms-gym-checkin` — G10 Stage 2 implementation underway
 
 ```text
 ms-gym-checkin/
@@ -144,7 +144,7 @@ ms-gym-checkin/
 │       ├── yugabyte/
 │       ├── member/
 │       ├── plans/
-│       ├── vault/
+│       ├── kms/
 │       └── kafka/
 ├── migrations/
 ├── test/integration/
@@ -157,7 +157,7 @@ ms-gym-checkin/
 └── go.sum
 ```
 
-Check-in uses `50051` for business gRPC and standard `net/http` on `8080` for health/readiness only. It stores encrypted/versioned QR keys, Check-in records, idempotency state, and transactional outbox rows in YugabyteDB. A logged-in `SUPER_ADMIN` iPad app displays QR payloads; no kiosk/device table, device secret, HTTP Basic flow, or device lifecycle is planned.
+Check-in uses `50051` for business gRPC and standard `net/http` on `8080` for health/readiness only. AWS KMS encrypts/decrypts each 32-byte QR root key; Yugabyte stores base64 KMS ciphertext in `key_ciphertext`, the resolved CMK ARN in `key_reference`, Check-in records, idempotency state, and transactional outbox rows. A logged-in `SUPER_ADMIN` iPad app displays QR payloads; no kiosk/device table, device secret, HTTP Basic flow, or device lifecycle is planned.
 
 ## Infrastructure Repository
 
@@ -214,6 +214,6 @@ ms-gym-plans$ ./gradlew stopEnv
 - Cross-service IDs are opaque strings and never database foreign keys.
 - Public Member/Plans/Check-in routes come from inline annotations; internal workload RPCs remain unmapped.
 - Plans and Member filtering uses Spring Data JPA Specifications, not custom persistence queries.
-- Check-in reuses `common-go`, standard-library crypto/HTTP, official Vault client, and existing generated gateway; no generic repository, shared crypto framework, or parallel gateway.
+- Check-in reuses `common-go`, standard-library crypto/HTTP, official AWS SDK for Go v2 KMS client, and existing generated gateway; no generic repository, shared crypto framework, or parallel gateway.
 
 See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md), [Check-in service](../services/06-ms-gym-checkin.md), and [Plans service](../services/10-ms-gym-plans.md).

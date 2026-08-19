@@ -2,7 +2,7 @@
 
 > **Target:** Go | YugabyteDB `checkin_db` | `50051` native mTLS gRPC | `8080` health/readiness
 >
-> **Roadmap status:** G10 planned; implementation has not started. [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md) is the actionable handoff. G0–G9 evidence remains historical and unchanged.
+> **Roadmap status:** G10 is in progress; Stage 2 implementation is underway. Release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending. [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md) remains the execution record. G0–G9 evidence remains historical and unchanged.
 
 ## Responsibilities
 
@@ -89,17 +89,19 @@ The app stores login and refresh tokens through iOS Keychain or equivalent platf
 
 ## QR Root-Key Protection
 
-Use Vault Transit through the official Vault Go client:
+Use the official AWS SDK for Go v2 KMS client:
 
 1. Generate each per-gym 32-byte root key with `crypto/rand`.
-2. Encrypt through Vault Transit.
-3. Store only Vault ciphertext and key reference in YugabyteDB.
-4. Use Kubernetes workload authentication in deployed environments.
-5. On normal rotation, accept the prior key for exactly 120 seconds.
-6. On emergency rotation, retire the prior key immediately.
-7. Check key status in YugabyteDB on every display and scan request.
-8. Cache decrypted key material only in-process and no longer than its acceptance deadline.
-9. On Vault outage, mark readiness false, block key mutations and cache misses, and never accept retired or unknown keys.
+2. Encrypt and decrypt root keys with AWS KMS.
+3. Store base64 KMS ciphertext only in `key_ciphertext` and the resolved CMK ARN only in `key_reference` in YugabyteDB.
+4. In production, use AWS SDK default credentials through EKS workload identity; never configure static AWS credentials.
+5. Limit IAM to `kms:Encrypt`, `kms:Decrypt`, and `kms:DescribeKey` on the CMK.
+6. Set `KMS_ENDPOINT_URL` only for local LocalStack; production uses no endpoint override.
+7. On normal rotation, accept the prior key for exactly 120 seconds.
+8. On emergency rotation, retire the prior key immediately.
+9. Check key status in YugabyteDB on every display and scan request.
+10. Cache decrypted key material only in-process and no longer than its acceptance deadline.
+11. On KMS outage, mark readiness false, block key mutations and cache misses, and never accept retired or unknown keys.
 
 Redis is not part of G10. Add it only after measurement proves a need that a bounded in-process cache cannot meet.
 
@@ -126,7 +128,7 @@ Rules:
 - Return current and next payloads to a logged-in `SUPER_ADMIN` iPad app.
 - Never expose root-key material in payloads, APIs, logs, metrics, events, or evidence.
 
-## Planned Display Flow
+## Display Flow
 
 ```mermaid
 sequenceDiagram
@@ -136,7 +138,7 @@ sequenceDiagram
     participant GW as Generated gateway
     participant CS as Check-in
     participant PL as Plans
-    participant V as Vault Transit
+    participant KMS as AWS KMS
     participant DB as checkin_db
 
     O->>IP: Log in and select gym
@@ -148,18 +150,18 @@ sequenceDiagram
     PL-->>CS: Active canonical gym
     CS->>DB: Load current acceptable key state
     alt Gym has no current root key
-        CS->>V: Encrypt random 32-byte root key
-        V-->>CS: Transit ciphertext
-        CS->>DB: Commit key version/ciphertext/reference
+        CS->>KMS: Encrypt random 32-byte root key
+        KMS-->>CS: KMS ciphertext
+        CS->>DB: Commit `key_ciphertext` (base64) and `key_reference` (CMK ARN)
     end
-    CS->>V: Decrypt on bounded-cache miss
+    CS->>KMS: Decrypt on bounded-cache miss
     CS-->>IP: Current and next signed payloads
     IP-->>O: Full-screen rotating QR display
 ```
 
 No gym-location or display-device event is introduced. Plans remains synchronous authority for active gym validation.
 
-## Planned Scan Flow
+## Scan Flow
 
 ```mermaid
 sequenceDiagram
@@ -170,7 +172,7 @@ sequenceDiagram
     participant GW as Generated gateway
     participant CS as Check-in
     participant DB as checkin_db
-    participant V as Vault Transit
+    participant KMS as AWS KMS
     participant MB as Member
     participant KF as Kafka
 
@@ -183,7 +185,7 @@ sequenceDiagram
     CS->>DB: Resolve idempotency result or conflict
     CS->>CS: Parse signed gym/key/slot
     CS->>DB: Load acceptable key state
-    CS->>V: Decrypt on bounded-cache miss
+    CS->>KMS: Decrypt on bounded-cache miss
     CS->>CS: Verify HMAC, slot, and request/signed gym consistency
     CS->>MB: ValidateMembership(user_id, signed_gym_id) over mTLS
     MB-->>CS: canonical member_id, valid, live status
@@ -198,11 +200,11 @@ sequenceDiagram
 
 Plans does not participate in the scan path. Any dependency outage fails closed where authoritative data or key material is unavailable.
 
-## Planned Data Model
+## Data Model
 
 ```text
 gym_qr_root_keys
-  gym_id, key_version, vault_ciphertext, vault_key_reference,
+  gym_id, key_version, key_ciphertext, key_reference,
   status, activated_at, acceptance_deadline, retired_at
 
 check_ins
@@ -226,7 +228,7 @@ Required invariants:
 
 Append-only migrations run explicitly, not as hidden pod-startup behavior.
 
-## Planned Kafka Event
+## Kafka Event
 
 | Topic | Key | Concrete value | Subject |
 |---|---|---|---|
@@ -251,7 +253,7 @@ ms-gym-checkin/
 │       ├── yugabyte/
 │       ├── member/
 │       ├── plans/
-│       ├── vault/
+│       ├── kms/
 │       └── kafka/
 ├── migrations/
 ├── test/integration/
@@ -268,4 +270,4 @@ Use `common-go` for the established interceptor, errors, observability, Kafka, r
 
 ## Completion Rule
 
-This document describes a planned boundary, not implemented behavior. Mark Check-in complete only after all [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md) stages pass with immutable dependencies, locked detached-source local proof, protected CI, sanitized evidence, and clean pinned trees. Record accountable-owner acceptance separately from technical status.
+This document describes the in-progress G10 boundary; Stage 2 implementation does not make G10 complete. Mark Check-in complete only after all [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md) stages pass with immutable dependencies, locked detached-source local proof, protected CI, sanitized evidence, and clean pinned trees. Record accountable-owner acceptance separately from technical status.

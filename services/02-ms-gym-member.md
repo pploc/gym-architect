@@ -2,7 +2,7 @@
 
 > **Tech:** Java 26 + Spring Boot 4 | **DB:** PostgreSQL `member_db` | **Business port:** 50051 native mTLS gRPC
 >
-> **Roadmap status:** G9 complete. G10 is planned and changes only the Check-in-only `ValidateMembership` request/response boundary described below. Historical G4/G5/G8/G9 evidence remains unchanged.
+> **Roadmap status:** G9 complete. G10 is in progress with Stage 2 Check-in implementation underway; it changes only the Check-in-only `ValidateMembership` request/response boundary described below. Release/integration and owner acceptance remain pending. Historical G4/G5/G8/G9 evidence remains unchanged.
 
 ## Responsibilities
 
@@ -16,7 +16,7 @@
 
 Member does not own gym locations, plan catalog data, plan availability, duration definitions, or VND list price. [Plans](10-ms-gym-plans.md) owns those records. Member stores only opaque `gym_id` and `plan_id` references.
 
-Payment remains deferred. Check-in is planned under G10 but not implemented. G8 uses a minimal fake Payment fixture only to prove purchase correlation, completion validation, and replay.
+Payment remains deferred. G10 Check-in Stage 2 implementation is underway. G8 uses a minimal fake Payment fixture only to prove purchase correlation, completion validation, and replay.
 
 ## State Machine
 
@@ -260,9 +260,9 @@ SAN → method matrix:
 - End-user claim headers are accepted only from Kong SAN; internal certs cannot forge them.
 - NetworkPolicy admits gRPC only from generated gateway, Check-in, and Notification on caller-specific rules. Identifier has no Member edge after Phase 9 Stage 0.
 
-## Planned G10 Check-in Boundary
+## G10 Check-in Boundary
 
-Plans owns location data; Member owns membership decisions. Phase 10 changes the internal Check-in-only contract to:
+Plans owns location data; Member owns membership decisions. Phase 10 froze the internal Check-in-only contract as:
 
 ```protobuf
 message ValidateMembershipRequest {
@@ -277,7 +277,7 @@ message ValidateMembershipResponse {
 }
 ```
 
-Field numbers above are finalized during the coordinated contract break. Check-in derives `user_id` from verified JWT `sub` and `gym_id` from the signed QR. Member resolves canonical `member_id` and live gym-specific membership state. Client input never selects canonical member identity.
+The released contract fixes the field numbers above. Check-in derives `user_id` from verified JWT `sub` and `gym_id` from the signed QR. Member resolves canonical `member_id` and live gym-specific membership state. Client input never selects canonical member identity.
 
 Member implements this lookup with existing Spring Data JPA repositories and `Specification` composition, not a custom persistence query. Only `ms-gym-checkin` SAN may call the method; no HTTP mapping, Kong route, OpenAPI operation, or forwarded end-user metadata exists. The logged-in iPad display and active-gym validation belong to Check-in/Plans, not Member.
 

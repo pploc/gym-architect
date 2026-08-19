@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G0–G9 are complete. G10 plans `ms-gym-checkin`; implementation has not started. Historical evidence remains unchanged. See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md).
+> **Roadmap status:** G0–G9 are complete. G10 is in progress and Stage 2 Check-in implementation is underway; release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending. Historical evidence remains unchanged. See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md).
 
 ## System Context
 
@@ -18,7 +18,7 @@ Selecting a gym is frontend URL/request state. It does not issue another token a
 
 ## Active Roadmap Scope and Service Catalog
 
-Identifier, Member, and Plans are implemented active scope. Check-in is planned active scope under G10 and is not deployed. Other entries remain future boundaries.
+Identifier, Member, and Plans are implemented active scope. Check-in is active G10 scope with Stage 2 implementation underway; it is not released or deployed. Other entries remain future boundaries.
 
 | # | Service | Technology | Database | Ownership | Status |
 |---|---|---|---|---|---|
@@ -28,7 +28,7 @@ Identifier, Member, and Plans are implemented active scope. Check-in is planned 
 | 4 | Payment | Java + PostgreSQL | `payment_db` | Payments, provider webhooks, refunds | Deferred; G8 uses a fake fixture only |
 | 5 | Workout | Go + Cassandra | `workout_ks` | Workout logs, templates, personal records | Deferred |
 | 6 | Trainer | Java + PostgreSQL | `trainer_db` | Trainer profiles, availability, bookings | Deferred |
-| 7 | Check-in | Go gRPC + YugabyteDB | `checkin_db` | QR keys, logged-in iPad display payloads, scan validation, check-in records/event | G10 planned; not started |
+| 7 | Check-in | Go gRPC + YugabyteDB | `checkin_db` | AWS KMS-protected QR keys, logged-in iPad display payloads, scan validation, check-in records/event | G10 in progress; Stage 2 implementation underway |
 | 8 | Notification | Go + Cassandra | `notification_ks` | Notification fan-out and history | Deferred |
 | 9 | Analytics | Java + YugabyteDB | `analytics_db` | Attendance, revenue, and trend projections | Deferred |
 | 10 | Promotion | Java + PostgreSQL | `promotion_db` | Promotion codes and reservations | Deferred |
@@ -42,7 +42,7 @@ flowchart LR
     Kong -->|mTLS HTTPS 8443| GW[Generated Go grpc-gateway]
     GW -->|mTLS gRPC 50051| MB[Member]
     GW -->|mTLS gRPC 50051| PL[Plans]
-    GW -.->|G10 planned: mTLS gRPC 50051| CI[Check-in]
+    GW -.->|G10 in progress: mTLS gRPC 50051| CI[Check-in]
 
     ID -->|mTLS: GetActiveGym for trainer validation| PL
     MB -->|mTLS: ResolvePurchasablePlan| PL
@@ -54,7 +54,7 @@ flowchart LR
     MB --> MBDB[(member_db)]
     PL --> PLDB[(plans_db)]
     CI -.-> CIDB[(checkin_db)]
-    CI -.-> Vault[Vault Transit]
+    CI -.-> KMS[AWS KMS]
     ID --> Redis[(Redis)]
     ID --> Kafka[[Kafka]]
     MB --> Kafka
@@ -140,7 +140,7 @@ Never infer admin gym scope from UI state, request paths, or obsolete selected-g
 | Identifier public HTTP/JSON | Client to Kong to Identifier HTTP gateway on `8080` |
 | Member and Plans public HTTP/JSON | Client to Kong, then mTLS generated gateway `8443`, then service mTLS gRPC `50051` |
 | Native workload gRPC | Exact caller SAN to exact method on `50051` |
-| Kafka | G9: Identifier/Member topics; G10 plans Check-in transactional-outbox production |
+| Kafka | G9: Identifier/Member topics; G10 Stage 2 is implementing Check-in transactional outbox; release/integration remains pending |
 | Check-in display | G10: logged-in `SUPER_ADMIN` iPad app to Kong to generated gateway to Check-in |
 
 Public Member and Plans metadata is trusted only when the peer certificate SAN is `ms-gym-api-gateway`. Kong strips forged trusted headers and injects verified identity/role metadata only; gateway accepts that metadata only from Kong SAN, strips arbitrary inbound metadata, and forwards vetted values. Path binding populates explicit `gym_id`; it is not a JWT claim.
@@ -149,8 +149,8 @@ Exact internal allowlist:
 
 - Identifier may call Plans `GetActiveGym` for current trainer validation.
 - Member may call Plans `ResolvePurchasablePlan`.
-- G10 plans Check-in to Member `ValidateMembership(user_id, signed_gym_id)`, returning canonical `member_id`, validity, and status.
-- G10 plans Check-in to Plans dedicated `ValidateCheckInGym`-style method for display/key administration; it does not broaden Identifier's `GetActiveGym`.
+- G10 Check-in calls Member `ValidateMembership(user_id, signed_gym_id)`, returning canonical `member_id`, validity, and status.
+- G10 Check-in calls Plans' dedicated `ValidateCheckInGym` method for display/key administration; it does not broaden Identifier's `GetActiveGym`.
 - Notification may call Member `ListMembersByStatus` when that deferred service is implemented.
 
 Internal methods have no HTTP annotation, Kong route, or OpenAPI operation. Workload certificates establish service identity, not end-user roles.
@@ -182,4 +182,4 @@ Browser REST clients generate from released OpenAPI 3.0. Backend and native gRPC
 | Admin gym scope | `SUPER_ADMIN` until staff assignment exists | Request gym context is not authorization |
 | Browser contract | Generated OpenAPI 3.0 | Describes HTTP paths, security, schemas, and errors |
 | QR display | Logged-in `SUPER_ADMIN` iPad app | Reuses stable JWT flow; no kiosk/device lifecycle |
-| QR key protection | Vault Transit + Yugabyte ciphertext | Keeps plaintext root keys out of durable service storage |
+| QR key protection | AWS KMS + Yugabyte base64 KMS ciphertext | KMS encrypts/decrypts 32-byte root keys; Yugabyte stores no plaintext |

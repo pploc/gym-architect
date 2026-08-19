@@ -1,10 +1,10 @@
 # Phase 10 — Implement `ms-gym-checkin`
 
-> **Status:** Planned; implementation has not started. G9 is complete. G10 opens only Check-in and does not activate Payment, Workout, Trainer, Promotion, Notification, or Analytics.
+> **Status:** In progress. Stage 2 `ms-gym-checkin` implementation is underway. Release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending. G10 opens only Check-in and does not activate Payment, Workout, Trainer, Promotion, Notification, or Analytics.
 
 ## Objective
 
-Reach G10 by freezing the Check-in contracts, releasing immutable dependencies, implementing the Go service against YugabyteDB and Vault Transit, publishing `checkin.recorded.v1` through a transactional outbox, adding the generated browser gateway/Kong surface, and proving the result from locked clean sources.
+Complete G10 by finishing the in-progress Go service against YugabyteDB and AWS KMS, publishing `checkin.recorded.v1` through a transactional outbox, adding the generated browser gateway/Kong surface, and proving the result from locked clean sources.
 
 Check-in owns encrypted and versioned QR root keys, signed display payloads, scan validation, check-in records, and the Check-in event. A simple iPad app displays QR codes after the gym owner logs in. Plans remains authoritative for gym locations. Member remains authoritative for member identity and live membership state.
 
@@ -24,7 +24,7 @@ Check-in owns encrypted and versioned QR root keys, signed display payloads, sca
 - `common-go`;
 - `ms-gym-member`;
 - `ms-gym-plans`;
-- new sibling repository `ms-gym-checkin`;
+- sibling repository `ms-gym-checkin`;
 - `gym-infra`.
 
 `common-java` is mandatory in Stage 1. The frozen Check-in topic must decode in Java and Go, and release evidence requires the existing bidirectional Java/Go foundation matrix. Identifier requires no Check-in runtime change.
@@ -85,17 +85,19 @@ Remove and reserve obsolete `device_id` fields and remove `RegisterDevice` and `
 
 ### Root-key protection and rotation
 
-Use Vault Transit through the official Vault Go client:
+Use the official AWS SDK for Go v2 KMS client:
 
 - generate each 32-byte QR root key with `crypto/rand`;
-- store only Vault ciphertext and its key reference in `checkin_db`;
-- authenticate deployed Check-in through Kubernetes workload identity;
+- encrypt/decrypt the root key with AWS KMS; store base64 KMS ciphertext in `key_ciphertext` and the resolved CMK ARN in `key_reference` in `checkin_db`;
+- production uses AWS SDK default credentials through EKS workload identity, with no static AWS credentials;
+- IAM permits only `kms:Encrypt`, `kms:Decrypt`, and `kms:DescribeKey` on the CMK;
+- `KMS_ENDPOINT_URL` is LocalStack-only and must not be set in production;
 - normal rotation accepts the prior key for exactly 120 seconds;
 - emergency rotation retires the prior key immediately;
 - every display/scan request checks Yugabyte key status;
 - decrypted key bytes may exist only in an in-process bounded cache until their acceptance deadline;
 - no Redis key cache;
-- Vault outage marks readiness false, blocks key mutations and cache misses, and never makes a retired or unknown key acceptable.
+- KMS outage marks readiness false, blocks key mutations and cache misses, and never makes a retired or unknown key acceptable.
 
 ### Public topology
 
@@ -109,7 +111,7 @@ Check-in
   -> mTLS Member ValidateMembership
   -> mTLS Plans ValidateCheckInGym
   -> YugabyteDB checkin_db
-  -> Vault Transit
+  -> AWS KMS
   -> Kafka + Schema Registry through transactional outbox
 ```
 
@@ -223,9 +225,9 @@ Do not describe this run as protected CI and do not tag `80950af`. Repair and re
 2. Correct `contracts/v1/release-evidence.md` to distinguish the passed unprotected Actions run from protected release evidence. Existing G9 generated-gateway/Kong evidence satisfies the current Kong release gate; Check-in-specific runtime route, header, and error evidence remains a Stage 3 obligation.
 3. Configure and verify the approved repository/tag rules and release-environment protections through GitHub, or leave release blocked and record the missing protection truthfully. Protection changes require explicit authorization.
 4. Rerun the complete Stage 0 suite on the new exact source SHA. Download the Actions artifact and verify a non-empty report plus these candidate outputs: all eleven fixture cases, deterministic Java/Go/OpenAPI/Kong generation, exact 24 approved Buf diagnostics, and manifest-derived route counts.
-5. Before publication, prove absence of source tag `v7.0.0`, Go tag `v1.7.0`, GitHub release `v7.0.0`, and Java package `com.gym.proto:gym-proto-java:7.0.0`. Stop for explicit tag/package/release authorization.
-6. Publish Java `7.0.0` and Go `v1.7.0` only from the approved source SHA. The workflow creates the annotated Go tag locally, publishes Java, and only then pushes the Go tag; failure after Java publication is a partial publication: stop, preserve the immutable Java package, diagnose, and resume only a same-SHA recovery path. Never blindly retry, replace a remote tag, or publish different bytes under an existing version.
-7. From clean consumers, prove the annotated source tag peels to the approved SHA; `github.com/pploc/proto-go@v1.7.0` resolves without `replace`; Java `7.0.0` resolves from GitHub Packages without `mavenLocal()`; representative Identity, Member, Plans, Check-in, and event types compile on Go 1.26 and Java 26; and release assets bind the source SHA, fixture checksum, canonical OpenAPI checksums, Kong bundle checksum, and generated-output checksums.
+5. Before publication, prove absence of source tag `v7.0.2`, Go tag `v1.7.1`, GitHub release `v7.0.2`, and Java package `com.gym.proto:gym-proto-java:7.0.2`. Stop for explicit tag/package/release authorization.
+6. Publish Java `7.0.2` and Go `v1.7.1` only from the approved source SHA. The workflow creates the annotated Go tag locally, publishes Java, and only then pushes the Go tag; failure after Java publication is a partial publication: stop, preserve the immutable Java package, diagnose, and resume only a same-SHA recovery path. Never blindly retry, replace a remote tag, or publish different bytes under an existing version.
+7. From clean consumers, prove the annotated source tag peels to the approved SHA; `github.com/pploc/proto-go@v1.7.1` resolves without `replace`; Java `7.0.2` resolves from GitHub Packages without `mavenLocal()`; representative Identity, Member, Plans, Check-in, and event types compile on Go 1.26 and Java 26; and release assets bind the source SHA, fixture checksum, canonical OpenAPI checksums, Kong bundle checksum, and generated-output checksums.
 
 Do not hardcode a browser-operation total in release logic. Derive operation and route inventories from the frozen manifests. Schema ID `6` is fixture-local and must never appear as a runtime constant.
 
@@ -235,14 +237,14 @@ Do not hardcode a browser-operation total in release logic. Derive operation and
 
 #### Reconcile provenance and freeze versions
 
-1. Record current immutable baselines: `common-go v0.4.0` and `common-java v2.1.0`.
+1. Record current immutable baselines: `common-go v0.5.0` and `common-java v2.1.0`.
 2. Reconcile the existing `com.gym:common-java:2.1.1` package with source history and publication logs. It is used by Member and Plans but has no matching Git tag or GitHub release and still declares `gym-proto-java:4.1.0`; do not treat it as complete release evidence.
 3. Freeze the exact next semantic versions only after deciding the disposition of `2.1.1` and recording source/package provenance. Do not guess versions in this plan.
-4. Repair candidate/stable workflows only after those versions are frozen. Replace obsolete `common-java 2.0.0`, `common-go v0.3.0`, and Protobuf v1.1.0 assumptions with exact approved candidate refs, released `gym-proto v7.0.0`, `proto-go v1.7.0`, source SHAs, and fixture checksum `e79341b996d5052c0e0e4a0fe2621fd5edab6ad3b2d3a8304678664cbb46b4ab`.
+4. Repair candidate/stable workflows only after those versions are frozen. Replace obsolete `common-java 2.0.0`, `common-go v0.3.0`, and Protobuf v1.1.0 assumptions with exact approved candidate refs, released `gym-proto v7.0.2`, `proto-go v1.7.1`, source SHAs, and fixture checksum `e79341b996d5052c0e0e4a0fe2621fd5edab6ad3b2d3a8304678664cbb46b4ab`.
 
 #### Prepare `common-java`
 
-1. Upgrade the public dependency to `com.gym.proto:gym-proto-java:7.0.0`; resolve it externally without `mavenLocal()`.
+1. Upgrade the public dependency to `com.gym.proto:gym-proto-java:7.0.2`; resolve it externally without `mavenLocal()`.
 2. Add `checkin.recorded.v1` / `events.v1.CheckInRecordedEvent` to `KafkaContract.TOPIC_TYPES`. Change the ten-pair `Map.of(...)` to `Map.ofEntries(...)`; add no new registry abstraction.
 3. Keep the existing fixture-driven concrete descriptor, Confluent-frame, canonical-header, lookup-only publication, retry, acknowledgement, redelivery, and DLQ tests. Rename generation-specific test wording such as `givenSeededV110Registry...` without weakening assertions.
 4. Replace the hardcoded Registry subject total with checks that each fixture subject exists and reports `BACKWARD`. Imported `buf/validate/validate.proto` and `common/v1/common.proto` subjects make total Registry counts invalid.
@@ -250,7 +252,7 @@ Do not hardcode a browser-operation total in release logic. Derive operation and
 
 #### Prepare `common-go`
 
-1. Upgrade `github.com/pploc/proto-go` to released `v1.7.0` with `GOWORK=off`; regenerate `go.sum` through Go tooling.
+1. Upgrade `github.com/pploc/proto-go` to released `v1.7.1` with `GOWORK=off`; regenerate `go.sum` through Go tooling.
 2. Add the Check-in topic/type pair to `kafka/schema.go` and add both missing concrete Registry messages: `EmailVerificationRequestedEvent` and `CheckInRecordedEvent`.
 3. Remove the whole-test pre-v4 fixture skip in `proto_fixture_test.go`. Every one of the eleven committed cases must construct its concrete message and verify payload/frame bytes.
 4. Replace hardcoded nine-case assertions and workflow metadata with inventory derived from the committed fixture/topic contract.
@@ -267,7 +269,7 @@ Do not hardcode a browser-operation total in release logic. Derive operation and
 
 ### Gate 3 — Prepare Member
 
-1. Upgrade to released `gym-proto-java:7.0.0` and the coordinated released `common-java` version. Remove `mavenLocal()` and prove clean cache-independent dependency resolution.
+1. Upgrade to released `gym-proto-java:7.0.2` and the coordinated released `common-java` version. Remove `mavenLocal()` and prove clean cache-independent dependency resolution.
 2. Keep the gRPC handler/delegate thin. Resolve `request.user_id` to the canonical Member-owned row with `MemberSpecifications.hasUserId`, then compose `SubscriptionSpecifications.hasMemberId(...).and(hasGymId(...))`. Add no repository method and no custom `@Query`.
 3. Evaluate all gym subscriptions against an injected UTC `Clock`. Return canonical `member_id` and one effective result:
    - missing member: gRPC `NOT_FOUND`; Check-in maps it to its frozen invalid-membership response and writes no Check-in/outbox state;
@@ -282,7 +284,7 @@ Do not hardcode a browser-operation total in release logic. Derive operation and
 
 ### Gate 4 — Prepare Plans
 
-1. Upgrade to released `gym-proto-java:7.0.0` and the coordinated released `common-java` version. Remove `mavenLocal()` and prove clean cache-independent dependency resolution.
+1. Upgrade to released `gym-proto-java:7.0.2` and the coordinated released `common-java` version. Remove `mavenLocal()` and prove clean cache-independent dependency resolution.
 2. Add one thin `@RequirePolicy(INTERNAL_WORKLOAD)` `validateCheckInGym` handler. Reuse `GymLocationService.getActive`; return its canonical persisted gym ID and active status. Add no service, DTO, mapper abstraction, repository query, Specification, or migration.
 3. Add only `ValidateCheckInGym -> ms-gym-checkin` to the exact method allowlist. Preserve `GetActiveGym -> ms-gym-identifier` and `ResolvePurchasablePlan -> ms-gym-member` unchanged.
 4. Add Given/When/Then tests for active canonical response, closed gym, missing gym, all approved Check-in DNS/SPIFFE forms, and denial of generated gateway, Kong, Identifier, Member, Notification, arbitrary CA-valid clients, missing certificates, plaintext, and swapped methods. Add a real TLS-handshake workload integration test; mocked `SSLSession` unit checks alone are insufficient.
@@ -321,7 +323,7 @@ Run the two service command blocks independently so the first `exit` does not sk
 
 ### Stage 1 exit
 
-- `gym-proto v7.0.0`, `gym-proto-java:7.0.0`, and `proto-go v1.7.0` resolve externally and bind one approved, actually protected source SHA with non-empty release evidence.
+- `gym-proto v7.0.2`, `gym-proto-java:7.0.2`, and `proto-go v1.7.1` resolve externally and bind one approved, actually protected source SHA with non-empty release evidence.
 - Repository/tag/release-environment protection is verified through authoritative configuration; any absent protection remains a release blocker and is not relabeled as protected CI.
 - Exact `common-java` and `common-go` versions have reconciled provenance, resolve externally, and bind the same eleven-case fixture/checksum and released Protobuf generation.
 - The bidirectional Java-to-Go and Go-to-Java all-fixture matrix passes without skipped cases or Schema Registry mutation.
@@ -332,9 +334,9 @@ Run the two service command blocks independently so the first `exit` does not sk
 
 ---
 
-## Stage 2 — Create and implement `ms-gym-checkin`
+## Stage 2 — Implement `ms-gym-checkin`
 
-Create the sibling Git repository only after Stage 1 artifacts are available.
+The sibling Git repository exists and Stage 2 implementation is underway. Finish only the scoped Check-in service work below.
 
 ### Minimum repository structure
 
@@ -351,7 +353,7 @@ ms-gym-checkin/
 │       ├── yugabyte/
 │       ├── member/
 │       ├── plans/
-│       ├── vault/
+│       ├── kms/
 │       └── kafka/
 ├── migrations/
 ├── test/integration/
@@ -376,7 +378,7 @@ Follow `ms-gym-identifier` for composition-root placement and `common-go` for pl
 - categorized safe errors and `x-error-code` trailers;
 - W3C tracing, bounded-cardinality metrics, and secret-safe logging;
 - concrete mTLS Member and Plans clients with deadlines;
-- official Vault Go client;
+- official AWS SDK for Go v2 KMS client;
 - `database/sql` through Yugabyte YSQL/PostgreSQL wire protocol;
 - explicit migrations, never hidden pod-startup migrations;
 - bounded readiness checks, HTTP shutdown, gRPC drain with force-stop fallback, background relay cancellation, and normal returns so deferred cleanup runs.
@@ -398,7 +400,7 @@ Required invariants include:
 - `(gym_id, key_version)` primary key;
 - one active/current root-key state per gym as frozen by Stage 0;
 - concurrency-safe first-display root-key creation for an active Plans gym;
-- root-key ciphertext and Vault key reference only;
+- base64 KMS ciphertext in `key_ciphertext` and resolved CMK ARN in `key_reference` only;
 - opaque `user_id`, `member_id`, and `gym_id` with no cross-service foreign keys;
 - unique `(user_id, idempotency_key)`;
 - canonical request fingerprint stored with the idempotency result;
@@ -440,7 +442,7 @@ Requirements:
 4. Strictly parse QR and derive signed gym/key/slot.
 5. Validate request gym consistency if Stage 0 retains explicit gym input.
 6. Load acceptable key status.
-7. Decrypt on cache miss through Vault and verify HMAC/time.
+7. Decrypt on cache miss through AWS KMS and verify HMAC/time.
 8. Call Member `ValidateMembership(user_id, signed_gym_id)` over Check-in mTLS, forwarding no user headers.
 9. Require `valid` and active status; use returned canonical `member_id`.
 10. Insert Check-in, idempotency result, and outbox event atomically.
@@ -457,11 +459,11 @@ Use `given_when_then` test names and lightweight fakes. Cover:
 - logged-in display authorization, active-gym validation, concurrency-safe first-display key creation, and denial for non-`SUPER_ADMIN` roles;
 - user-derived identity, role rules, exact method registry, and all unauthorized paths;
 - idempotent replay, changed fingerprint conflict, distinct-key behavior, and concurrency;
-- config validation, readiness, Vault outage/cache miss, and bounded shutdown;
+- config validation, readiness, KMS outage/cache miss, and bounded shutdown;
 - real interceptor chain through `bufconn`;
 - Yugabyte migrations/transactions/rollback/concurrency;
 - Member and Plans mTLS clients;
-- Vault Transit encrypt/decrypt/denial/outage;
+- AWS KMS encrypt/decrypt/denial/outage;
 - Kafka/Registry outbox publish, restart, retry, acknowledgement, and DLQ;
 - secret-leak scanning of API output, logs, metrics, and evidence;
 - reproducible scan latency in the locked fixture, targeting p95 below 100 ms without claiming a production SLO.
@@ -482,7 +484,7 @@ CI also runs configured lint, coverage, static analysis, `govulncheck`, clean de
 
 - Every business branch and trust boundary has runnable positive and negative checks.
 - Yugabyte constraints and transactions enforce local invariants.
-- Vault protects all durable root-key material and fails closed.
+- AWS KMS protects all durable root-key material and fails closed.
 - Record/outbox atomicity and Kafka wire contract pass against real dependencies.
 - Released dependencies resolve without local replacements.
 - CI and image build pass; repository tree is clean.
@@ -496,12 +498,12 @@ CI also runs configured lint, coverage, static analysis, `govulncheck`, clean de
 Use existing official/runtime facilities before adding code:
 
 - YugabyteDB official image/chart and YSQL for `checkin_db`;
-- Vault official image/chart with Transit and Kubernetes auth;
+- AWS KMS with EKS workload identity; LocalStack endpoint override only for local tests;
 - Kafka and Schema Registry existing platform contracts;
 - existing generic `gym-service` chart;
 - existing generated Go grpc-gateway.
 
-Provision least-privilege DB credentials, Check-in service account, mTLS identity, Vault role/policy/key reference, Kafka topic, Schema Registry subject, and migration job/path. Secret values are mounted or injected by the approved secret boundary, never committed.
+Provision least-privilege DB credentials, Check-in service account, mTLS identity, KMS CMK/key reference and IAM workload policy, Kafka topic, Schema Registry subject, and migration job/path. Secret values are mounted or injected by the approved secret boundary, never committed.
 
 ### Network and method policy
 
@@ -515,7 +517,7 @@ Add separate port/peer rules:
 | Check-in | Plans | `50051`, Check-in gym validation only |
 | Check-in | YugabyteDB | YSQL only |
 | Check-in | Kafka / Schema Registry | required producer/lookup ports only |
-| Check-in | Vault | Transit/auth API only |
+| Check-in | AWS KMS | KMS API only |
 | Health observers | Check-in | `8080`/configured metrics only |
 
 Deny Kong direct Check-in gRPC, gateway workload methods, sibling reuse of Check-in permissions, broad namespace ingress, and unrelated egress. NetworkPolicy does not replace server-side SAN/method authorization.
@@ -574,7 +576,7 @@ Final names may follow repository conventions, but G10 must have an independent 
 
 From clean detached sources with no readable sibling checkout:
 
-1. Start pinned YugabyteDB, Vault, Kafka, Schema Registry, Kong, generated gateway, Member, Plans, and Check-in.
+1. Start pinned YugabyteDB, local KMS emulator only where required, Kafka, Schema Registry, Kong, generated gateway, Member, Plans, and Check-in.
 2. Create/select an active gym through the approved API fixture.
 3. Log in as `SUPER_ADMIN` from the iPad-app fixture and obtain current/next signed payloads for the active gym.
 4. Prove non-`SUPER_ADMIN` users cannot obtain display payloads.
@@ -600,7 +602,7 @@ Prove failure for:
 - wrong SAN, sibling workload, gateway call to workload RPC, Kong direct service attempt, forged trusted headers, or duplicate trusted metadata;
 - missing/mismatched Registry subject while auto-registration remains disabled;
 - Yugabyte transaction rollback and relay restart;
-- Vault denied/unavailable with readiness and fail-closed behavior;
+- AWS KMS denied/unavailable with readiness and fail-closed behavior;
 - any secret/PII/raw-payload match in committed evidence.
 
 ### Release lock
@@ -609,7 +611,7 @@ Pin:
 
 - exact SHAs for `gym-proto`, `common-java`, `common-go`, Member, Plans, Check-in, and `gym-infra`;
 - contract, common-java, and common-go tags, artifact coordinates, provenance, bidirectional-matrix evidence, and checksums;
-- Member, Plans, Check-in, generated-gateway, Kong, YugabyteDB, Vault, Kafka, and Schema Registry image digests;
+- Member, Plans, Check-in, generated-gateway, Kong, YugabyteDB, Kafka, and Schema Registry image digests, plus KMS configuration identity;
 - canonical OpenAPI, route manifest/template, rendered config, migration, and fixture checksums;
 - certificate public metadata;
 - protected CI and release URLs.
@@ -620,7 +622,7 @@ The runner materializes detached sources into a temporary `0700` workspace, reje
 
 Evidence may contain exact commands/labels, timestamps, exit codes, SHAs, versions, checksums, image digests, safe aggregate results, certificate issuer/subject/SAN/fingerprint/validity, and CI/release URLs.
 
-Evidence must reject private keys, JWTs, `Authorization` values, refresh tokens, Vault plaintext or ciphertext, DB credentials, PII/fixture IDs, raw QR/event payloads, request/response bodies, raw logs, stack traces, and internal transport exceptions.
+Evidence must reject private keys, JWTs, `Authorization` values, refresh tokens, KMS plaintext or ciphertext, DB credentials, PII/fixture IDs, raw QR/event payloads, request/response bodies, raw logs, stack traces, and internal transport exceptions.
 
 ### Stage 4 exit
 
@@ -638,7 +640,7 @@ Evidence must reject private keys, JWTs, `Authorization` values, refresh tokens,
 - Member/Plans clean dependency and workload mTLS allow/deny reports, including source-SHA image digests when image publication is authorized;
 - Check-in unit/race/static/coverage/vulnerability report;
 - Yugabyte migration, constraint, concurrency, transaction, idempotency, and outbox report;
-- Vault policy, encryption, rotation, denial, outage, and secret-leak report;
+- AWS KMS IAM, encryption, rotation, denial, outage, and secret-leak report;
 - Kafka/Registry frame, key, headers, acknowledgement, retry, restart, and DLQ report;
 - Helm, NetworkPolicy, certificates, generated gateway, Kong, OpenAPI, and TypeScript report;
 - locked local/protected-CI G10 report and sanitized final evidence manifest.
@@ -655,7 +657,7 @@ Every report records exact SHAs, versions, checksums, commands, results, and tim
 - `ms-gym-checkin` owns only QR-key, scan, record, and Check-in event state; it owns no display-device lifecycle.
 - Stable JWT identity, live Member validation, active Plans gym validation, and exact workload SANs pass positive and negative checks.
 - YugabyteDB isolation, no cross-service foreign keys, idempotency, record/outbox atomicity, and concurrency are proven.
-- Vault Transit protects durable key material and rotation/outage behavior fails closed.
+- AWS KMS protects durable key material and rotation/outage behavior fails closed.
 - `checkin.recorded.v1` matches the frozen Protobuf/Schema Registry contract and relay semantics.
 - Generated gateway, Kong, OpenAPI, Helm, NetworkPolicy, and native-HTTP denial checks pass.
 - Locked clean-source local run, protected CI, sanitized evidence, and clean pinned trees pass.

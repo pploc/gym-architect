@@ -9,8 +9,9 @@ Only these services are actionable now:
 1. [`ms-gym-identifier`](services/01-ms-gym-identifier.md) — identity, authentication, and stable identity tokens.
 2. [`ms-gym-member`](services/02-ms-gym-member.md) — member profiles, subscriptions, membership lifecycle and validation.
 3. [`ms-gym-plans`](services/10-ms-gym-plans.md) — canonical gym locations, gym-specific plans and VND pricing.
+4. [`ms-gym-checkin`](services/06-ms-gym-checkin.md) — G10 in progress; Stage 2 implementation is underway for AWS KMS-protected QR keys, display payloads, scans, records, and `checkin.recorded.v1`.
 
-Payment, Check-in, Workout, Trainer, Promotion, Notification, and Analytics remain architecture catalog entries. Their service documents describe target boundaries, not current implementation work.
+Payment, Workout, Trainer, Promotion, Notification, and Analytics remain architecture catalog entries. Their service documents describe target boundaries, not current implementation work.
 
 ## Authoritative roadmap
 
@@ -20,6 +21,7 @@ Use [Foundation-First Platform Roadmap](plans/foundation-first/README.md). G0–
 - [Phase 7 — `ms-gym-plans`](plans/foundation-first/07-ms-gym-plans.md)
 - [Phase 8 — Three-service integration](plans/foundation-first/08-three-service-integration.md)
 - [Phase 9 — Stable identity, generated gateway, and OpenAPI 3.0](plans/foundation-first/09-kong-grpc-gateway-openapi.md)
+- [Phase 10 — `ms-gym-checkin`](plans/foundation-first/10-ms-gym-checkin.md) — Stage 2 implementation underway; release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending.
 
 [`PLAN.md`](PLAN.md) is a catalog and historical dependency sketch, not an execution plan.
 
@@ -44,5 +46,6 @@ Use [Foundation-First Platform Roadmap](plans/foundation-first/README.md). G0–
 | Membership lifecycle and validation | Member |
 | Gym locations | Plans |
 | Membership plan catalog and VND price | Plans |
+| QR root keys, display payloads, check-ins, and Check-in event | Check-in |
 
 Cross-service IDs are opaque strings. No service creates a database foreign key to another service database.

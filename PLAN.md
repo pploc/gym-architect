@@ -2,7 +2,7 @@
 
 ## Authoritative execution plan
 
-Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G9 foundation for Identifier, Member, and Plans is technically complete; owner approval remains separate. G9 uses Kong in front of generated Go `grpc-gateway` for Member and Plans browser APIs. Final immutable-release, locked clean-source, protected-CI, and sanitized-evidence proof is recorded in [`evidence/foundation-first/p9-final/README.md`](evidence/foundation-first/p9-final/README.md). G10 now plans `ms-gym-checkin`; implementation has not started. Other deferred services stay catalog-only until a later roadmap gate.
+Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G9 foundation for Identifier, Member, and Plans is technically complete; owner approval remains separate. G9 uses Kong in front of generated Go `grpc-gateway` for Member and Plans browser APIs. Final immutable-release, locked clean-source, protected-CI, and sanitized-evidence proof is recorded in [`evidence/foundation-first/p9-final/README.md`](evidence/foundation-first/p9-final/README.md). G10 is in progress: Stage 2 Check-in implementation is underway. Release/integration, infrastructure/gateway/Kong, locked E2E, protected CI, sanitized evidence, and owner acceptance remain pending. Other deferred services stay catalog-only until a later roadmap gate.
 
 ## Active and planned services
 
@@ -11,7 +11,7 @@ Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0�
 | `ms-gym-identifier` | Implemented | Go + Gin | PostgreSQL `identity_db` | Identity, credentials, and stable identity tokens |
 | `ms-gym-member` | Implemented | Java 26 + Spring Boot 4 | PostgreSQL `member_db` | Profiles, subscriptions, membership lifecycle and validation |
 | `ms-gym-plans` | Implemented | Java 26 + Spring Boot 4 | PostgreSQL `plans_db` | Gym locations, gym-specific plans, VND pricing |
-| `ms-gym-checkin` | G10 planned; not started | Go gRPC + `net/http` health | YugabyteDB `checkin_db` | Encrypted QR keys, logged-in iPad display payloads, scan validation, check-in records, and `checkin.recorded.v1` |
+| `ms-gym-checkin` | G10 in progress; Stage 2 implementation underway | Go gRPC + `net/http` health | YugabyteDB `checkin_db` | AWS KMS-protected QR keys, logged-in iPad display payloads, scan validation, check-in records, and `checkin.recorded.v1` |
 
 ## Deferred catalog
 
@@ -55,7 +55,7 @@ flowchart LR
     CI -->|transactional outbox| K[Kafka checkin.recorded.v1]
 ```
 
-Member keeps `PurchaseMembership`; production Payment remains deferred. G8 proved the outbound Payment port with `gym-infra/kong/fixtures/fake-payment`. Check-in remains planned until every G10 stage passes; no downstream Notification or Analytics consumer is opened.
+Member keeps `PurchaseMembership`; production Payment remains deferred. G8 proved the outbound Payment port with `gym-infra/kong/fixtures/fake-payment`. Check-in remains in progress until every G10 stage passes; no downstream Notification or Analytics consumer is opened.
 
 ## Change index
 
@@ -66,4 +66,4 @@ Member keeps `PurchaseMembership`; production Payment remains deferred. G8 prove
 | Subscription terms | Member spec, Plans spec, purchase flow, future Payment boundary |
 | External route | Protobuf `google.api.http` annotation, generated OpenAPI 3.0, Kong route documentation, NetworkPolicy documentation |
 | Kafka event | Kafka catalog, canonical Protobuf event, producer/consumer ownership |
-| Check-in trust or storage | Phase 10, Check-in service spec, Member/Plans workload boundaries, QR/device/key rules, Yugabyte/Vault/Kafka infrastructure |
+| Check-in trust or storage | Phase 10, Check-in service spec, Member/Plans workload boundaries, QR/no-device-lifecycle/key rules, Yugabyte/AWS KMS/Kafka infrastructure |
