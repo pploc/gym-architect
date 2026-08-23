@@ -33,7 +33,9 @@ The lock materializes detached repositories into a temporary mode-0700 workspace
 | Member protected CI | PASS | [ms-gym-member run 32370532909](https://github.com/pploc/ms-gym-member/actions/runs/32370532909) |
 | Plans protected CI | PASS | [ms-gym-plans run 32371259239](https://github.com/pploc/ms-gym-plans/actions/runs/32371259239) |
 | Authenticated locked G10 | PASS | [gym-infra run 32651525475](https://github.com/pploc/gym-infra/actions/runs/32651525475) |
+| PR required G10 gate | PASS | [gym-infra run 32652039056](https://github.com/pploc/gym-infra/actions/runs/32652039056) |
 | Prior outbox publish proof | PASS | [gym-infra run 32651239509](https://github.com/pploc/gym-infra/actions/runs/32651239509) |
+| Develop merge | PASS | [PR #1](https://github.com/pploc/gym-infra/pull/1) squash-merged as [`07f71c7f5002285663983e7594174a94a48e757a`](https://github.com/pploc/gym-infra/commit/07f71c7f5002285663983e7594174a94a48e757a) |
 | Sanitized G10 artifact | PASS | artifact `g10-sanitized-789cdf0285cef652b57bebf079ebf89ba9aa8eb7`; SHA-256 `1d0ea85c9414e962e2218c68878efa4ca529c8873a5a0e996e2906e6b7a901b9` |
 | Develop required check | PASS | `G10 locked fixture gate` required, `enforce_admins=true`, linear history, force push disabled |
 
