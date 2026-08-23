@@ -1,6 +1,6 @@
 # Phase 10 — Implement `ms-gym-checkin`
 
-> **Status:** In progress. Stage 2 `ms-gym-checkin` implementation is underway. Release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending. G10 opens only Check-in and does not activate Payment, Workout, Trainer, Promotion, Notification, or Analytics.
+> **Status:** Complete on 2026-08-23. Locked clean-source E2E, protected CI, sanitized evidence, and develop required-check protection passed. Accountable-owner acceptance is recorded in [`evidence/foundation-first/g10-final/README.md`](../../evidence/foundation-first/g10-final/README.md). G10 opens only Check-in and does not activate Payment, Workout, Trainer, Promotion, Notification, or Analytics.
 
 ## Objective
 
@@ -336,7 +336,7 @@ Run the two service command blocks independently so the first `exit` does not sk
 
 ## Stage 2 — Implement `ms-gym-checkin`
 
-The sibling Git repository exists and Stage 2 implementation is underway. Finish only the scoped Check-in service work below.
+The sibling Git repository exists and Stage 2 implementation is complete. Scoped Check-in service work below is retained as the historical execution checklist.
 
 ### Minimum repository structure
 

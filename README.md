@@ -9,7 +9,7 @@ Only these services are actionable now:
 1. [`ms-gym-identifier`](services/01-ms-gym-identifier.md) — identity, authentication, and stable identity tokens.
 2. [`ms-gym-member`](services/02-ms-gym-member.md) — member profiles, subscriptions, membership lifecycle and validation.
 3. [`ms-gym-plans`](services/10-ms-gym-plans.md) — canonical gym locations, gym-specific plans and VND pricing.
-4. [`ms-gym-checkin`](services/06-ms-gym-checkin.md) — G10 in progress; Stage 2 implementation is underway for AWS KMS-protected QR keys, display payloads, scans, records, and `checkin.recorded.v1`.
+4. [`ms-gym-checkin`](services/06-ms-gym-checkin.md) — G10 complete; AWS KMS-protected QR keys, display payloads, scans, records, and `checkin.recorded.v1` are proven in [`evidence/foundation-first/g10-final/README.md`](evidence/foundation-first/g10-final/README.md).
 
 Payment, Workout, Trainer, Promotion, Notification, and Analytics remain architecture catalog entries. Their service documents describe target boundaries, not current implementation work.
 
@@ -21,7 +21,7 @@ Use [Foundation-First Platform Roadmap](plans/foundation-first/README.md). G0–
 - [Phase 7 — `ms-gym-plans`](plans/foundation-first/07-ms-gym-plans.md)
 - [Phase 8 — Three-service integration](plans/foundation-first/08-three-service-integration.md)
 - [Phase 9 — Stable identity, generated gateway, and OpenAPI 3.0](plans/foundation-first/09-kong-grpc-gateway-openapi.md)
-- [Phase 10 — `ms-gym-checkin`](plans/foundation-first/10-ms-gym-checkin.md) — Stage 2 implementation underway; release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending.
+- [Phase 10 — `ms-gym-checkin`](plans/foundation-first/10-ms-gym-checkin.md) — complete; see [`evidence/foundation-first/g10-final/README.md`](evidence/foundation-first/g10-final/README.md).
 
 [`PLAN.md`](PLAN.md) is a catalog and historical dependency sketch, not an execution plan.
 

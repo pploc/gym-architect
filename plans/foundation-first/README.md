@@ -19,7 +19,7 @@ contract freeze
   -> ms-gym-checkin contracts, service, and locked integration
 ```
 
-Identifier, Member, and Plans are implemented active scope. G10 Check-in is in progress and Stage 2 implementation is underway; release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending. Other service documents remain catalog-only until a later roadmap explicitly opens them.
+Identifier, Member, Plans, and Check-in are implemented active scope. G10 Check-in is technically complete with locked clean-source E2E, protected CI, sanitized evidence, and recorded owner acceptance; see [`g10-final`](../../evidence/foundation-first/g10-final/README.md). Other service documents remain catalog-only until a later roadmap explicitly opens them.
 
 ## Current status
 
@@ -29,8 +29,8 @@ Identifier, Member, and Plans are implemented active scope. G10 Check-in is in p
 - G7: passed. Plans owns locations/catalog; evidence under `docs/evidence/foundation-first/g7/local-2026-08-09/`.
 - G8: passed on prior contract generation; evidence under `docs/evidence/foundation-first/g8/local-2026-08-09/`. Owner approval remains pending.
 - G9: passed on 2026-08-15. Kong fronts generated Go `grpc-gateway` for Member and Plans HTTPS/JSON; gateway reaches their mTLS gRPC `50051` endpoints. Kong 3.8 source-Protobuf parsing remains historical rejected behavior. Plans `8080` remains Actuator-only. Immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized evidence, and recorded clean product trees passed; see [`p9-final`](../../evidence/foundation-first/p9-final/README.md).
-- G10: in progress. Stage 2 `ms-gym-checkin` implementation is underway. It uses user-based live membership validation, a logged-in `SUPER_ADMIN` iPad QR display, Plans-owned active-gym validation, AWS KMS-protected 32-byte QR root keys, YugabyteDB records/outbox, `checkin.recorded.v1`, and generated-gateway/Kong exposure. Release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending.
-- **Current G10 artifacts:** `gym-proto` v7.0.2, `gym-proto-java` 7.0.2, `proto-go` v1.7.1, and `common-go` v0.5.0. These supersede the immutable G9 contract baseline only for G10 work; prior G8/G9 evidence remains historical.
+- G10: passed on 2026-08-23. Check-in uses user-based live membership validation, a logged-in `SUPER_ADMIN` iPad QR display, Plans-owned active-gym validation, AWS KMS-protected 32-byte QR root keys, YugabyteDB records/outbox, `checkin.recorded.v1`, and generated-gateway/Kong exposure. Immutable v7.0.2 artifacts, locked clean-source G10, protected CI, sanitized evidence, develop required check `G10 locked fixture gate`, and recorded owner acceptance passed; see [`g10-final`](../../evidence/foundation-first/g10-final/README.md).
+- **Current G10 artifacts:** `gym-proto` v7.0.2, `gym-proto-java` 7.0.2, `proto-go` v1.7.1, `common-java` 3.0.0, and `common-go` v0.5.0. These supersede the immutable G9 contract baseline only for G10 work; prior G8/G9 evidence remains historical.
 
 G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 revised that boundary; G8 evidence supersedes G5 for location validation and catalog ownership. Member has no native public HTTP adapter; Phase 9 exposes its public gRPC methods as HTTPS/JSON through Kong.
 

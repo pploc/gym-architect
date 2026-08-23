@@ -2,7 +2,7 @@
 
 > **Target:** Go | YugabyteDB `checkin_db` | `50051` native mTLS gRPC | `8080` health/readiness
 >
-> **Roadmap status:** G10 is in progress; Stage 2 implementation is underway. Release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending. [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md) remains the execution record. G0–G9 evidence remains historical and unchanged.
+> **Roadmap status:** G10 complete on 2026-08-23. Locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance are recorded in [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md) remains the execution record. G0–G9 evidence remains historical and unchanged.
 
 ## Responsibilities
 
