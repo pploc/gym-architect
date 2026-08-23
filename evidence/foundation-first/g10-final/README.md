@@ -36,6 +36,7 @@ The lock materializes detached repositories into a temporary mode-0700 workspace
 | PR required G10 gate | PASS | [gym-infra run 32652039056](https://github.com/pploc/gym-infra/actions/runs/32652039056) |
 | Prior outbox publish proof | PASS | [gym-infra run 32651239509](https://github.com/pploc/gym-infra/actions/runs/32651239509) |
 | Develop merge | PASS | [PR #1](https://github.com/pploc/gym-infra/pull/1) squash-merged as [`07f71c7f5002285663983e7594174a94a48e757a`](https://github.com/pploc/gym-infra/commit/07f71c7f5002285663983e7594174a94a48e757a) |
+| Develop post-merge G10 gate | PASS | [gym-infra run 32652378076](https://github.com/pploc/gym-infra/actions/runs/32652378076) on `07f71c7`; artifact `g10-sanitized-07f71c7f5002285663983e7594174a94a48e757a` |
 | Sanitized G10 artifact | PASS | artifact `g10-sanitized-789cdf0285cef652b57bebf079ebf89ba9aa8eb7`; SHA-256 `1d0ea85c9414e962e2218c68878efa4ca529c8873a5a0e996e2906e6b7a901b9` |
 | Develop required check | PASS | `G10 locked fixture gate` required, `enforce_admins=true`, linear history, force push disabled |
 
