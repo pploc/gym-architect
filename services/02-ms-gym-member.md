@@ -16,7 +16,7 @@
 
 Member does not own gym locations, plan catalog data, plan availability, duration definitions, or VND list price. [Plans](10-ms-gym-plans.md) owns those records. Member stores only opaque `gym_id` and `plan_id` references.
 
-Payment remains deferred. G10 Check-in Stage 2 implementation is underway. G8 uses a minimal fake Payment fixture only to prove purchase correlation, completion validation, and replay.
+Payment remains deferred. G10 Check-in is complete. G8 uses a minimal fake Payment fixture only to prove purchase correlation, completion validation, and replay.
 
 ## State Machine
 

@@ -43,7 +43,7 @@ Kong cannot directly reach Member or Plans `50051`. Gateway cannot call workload
 | `identity_db` | Identifier | users, refresh tokens, verification tokens |
 | `member_db` | Member | members, subscriptions, pending purchases, outbox, processed events |
 | `plans_db` | Plans | gym locations, membership plans |
-| `checkin_db` | Check-in, G10 Stage 2 underway | base64 KMS ciphertext in `key_ciphertext`, resolved CMK ARN in `key_reference`, check-ins, transactional outbox |
+| `checkin_db` | Check-in, G10 complete | base64 KMS ciphertext in `key_ciphertext`, resolved CMK ARN in `key_reference`, check-ins, transactional outbox |
 
 Only Plans owns catalog tables. Member stores opaque IDs and frozen purchased terms. Check-in stores opaque `user_id`, canonical `member_id`, and `gym_id` plus Check-in-owned state. Identifier stores no gym assignment. No cross-service DB FK or join is allowed. G10 adds no display-device table.
 
@@ -102,8 +102,8 @@ Generated gateway accepts metadata only if Kong's client certificate SAN is vali
 |---|---|---|---|
 | `ms-gym-identifier` | Plans | `GetActiveGym` | No |
 | `ms-gym-member` | Plans | `ResolvePurchasablePlan` | No |
-| `ms-gym-checkin` | Member | `ValidateMembership(user_id, gym_id)` | No; G10 Stage 2 underway |
-| `ms-gym-checkin` | Plans | dedicated `ValidateCheckInGym`-style method | No; G10 Stage 2 underway |
+| `ms-gym-checkin` | Member | `ValidateMembership(user_id, gym_id)` | No; G10 complete |
+| `ms-gym-checkin` | Plans | dedicated `ValidateCheckInGym`-style method | No; G10 complete |
 | `ms-gym-notification` | Member | `ListMembersByStatus` | No; deferred caller |
 | `ms-gym-api-gateway` | Member | declared public methods only | Yes |
 | `ms-gym-api-gateway` | Plans | declared public methods only | Yes |

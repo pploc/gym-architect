@@ -19,7 +19,7 @@ gapi/
 └── ms-gym-checkin/       # G10 Go Check-in service; complete
 ```
 
-Payment, Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Check-in is active G10 scope; Stage 2 implementation is underway.
+Payment, Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Check-in G10 is complete.
 
 ## Contract Repository
 
