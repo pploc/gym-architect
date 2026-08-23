@@ -1,6 +1,6 @@
 # Infrastructure Architecture
 
-> **Roadmap status:** G0–G9 are complete. G10 is in progress and Stage 2 Check-in implementation is underway. Release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending. Historical G9 lock and evidence remain unchanged.
+> **Roadmap status:** G0–G10 are complete. Check-in locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance are recorded in [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). Historical G9 lock and evidence remain unchanged.
 
 ## G9 baseline and in-progress G10 topology
 
@@ -11,7 +11,7 @@ flowchart TB
     Kong -->|mTLS HTTPS 8443| GW[Generated Go grpc-gateway]
     GW -->|mTLS gRPC 50051| MB[Member]
     GW -->|mTLS gRPC 50051| PL[Plans]
-    GW -.->|G10 in progress: mTLS gRPC 50051| CI[Check-in]
+    GW -->|G10 complete: mTLS gRPC 50051| CI[Check-in]
 
     ID -->|mTLS 50051: GetActiveGym| PL
     MB -->|mTLS 50051: ResolvePurchasablePlan| PL
@@ -144,7 +144,7 @@ Member:
   PLANS_GRPC_CERT
   PLANS_GRPC_KEY
 
-Check-in (G10 Stage 2 implementation underway):
+Check-in (G10 complete):
   MEMBER_GRPC_TARGET / DEADLINE / CA / CERT / KEY
   PLANS_GRPC_TARGET / DEADLINE / CA / CERT / KEY
   YUGABYTE_DSN through secret mount

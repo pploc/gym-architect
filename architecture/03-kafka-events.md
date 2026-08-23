@@ -1,6 +1,6 @@
 # Kafka Event Catalog
 
-> **Roadmap status:** G9's released Kafka baseline remains historical. The current `common-go` frozen topic/type map also includes `identity.email.verification-requested.v1`. G10 is in progress and Stage 2 is implementing `checkin.recorded.v1`; release/integration evidence is pending. Plans has no Kafka participation.
+> **Roadmap status:** G9's released Kafka baseline remains historical. The current `common-go` frozen topic/type map also includes `identity.email.verification-requested.v1`. G10 completed `checkin.recorded.v1` outbox publish proof; see [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). Plans has no Kafka participation.
 
 Kafka values use concrete Protobuf messages with Schema Registry framing. Kafka is greenfield: no JSON topics, envelopes, or deployed offsets require compatibility adapters.
 
@@ -183,7 +183,7 @@ These topic families remain deferred:
 
 | Topic | Key | Concrete value | Subject | Producer status |
 |---|---|---|---|---|
-| `checkin.recorded.v1` | canonical `member_id` | `events.v1.CheckInRecordedEvent` | `checkin.recorded.v1-value` | G10 Stage 2 implementation underway; release/integration pending |
+| `checkin.recorded.v1` | canonical `member_id` | `events.v1.CheckInRecordedEvent` | `checkin.recorded.v1-value` | G10 complete |
 
 Stage 0 freezes generated fields for canonical `member_id`, opaque `gym_id`, and typed `checked_in_at`. The event has no `device_id`: the QR display is a logged-in iPad app with no device lifecycle. Location, display, and QR-key lifecycle remain synchronous/admin concerns, not Kafka events.
 

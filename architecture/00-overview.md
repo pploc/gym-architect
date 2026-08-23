@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G0–G9 are complete. G10 is in progress and Stage 2 Check-in implementation is underway; release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending. Historical evidence remains unchanged. See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md).
+> **Roadmap status:** G0–G10 are complete. Check-in locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance are recorded in [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). Historical G0–G9 evidence remains unchanged. See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md).
 
 ## System Context
 
@@ -18,7 +18,7 @@ Selecting a gym is frontend URL/request state. It does not issue another token a
 
 ## Active Roadmap Scope and Service Catalog
 
-Identifier, Member, and Plans are implemented active scope. Check-in is active G10 scope with Stage 2 implementation underway; it is not released or deployed. Other entries remain future boundaries.
+Identifier, Member, Plans, and Check-in are implemented active scope. Other entries remain future boundaries.
 
 | # | Service | Technology | Database | Ownership | Status |
 |---|---|---|---|---|---|
@@ -28,7 +28,7 @@ Identifier, Member, and Plans are implemented active scope. Check-in is active G
 | 4 | Payment | Java + PostgreSQL | `payment_db` | Payments, provider webhooks, refunds | Deferred; G8 uses a fake fixture only |
 | 5 | Workout | Go + Cassandra | `workout_ks` | Workout logs, templates, personal records | Deferred |
 | 6 | Trainer | Java + PostgreSQL | `trainer_db` | Trainer profiles, availability, bookings | Deferred |
-| 7 | Check-in | Go gRPC + YugabyteDB | `checkin_db` | AWS KMS-protected QR keys, logged-in iPad display payloads, scan validation, check-in records/event | G10 in progress; Stage 2 implementation underway |
+| 7 | Check-in | Go gRPC + YugabyteDB | `checkin_db` | AWS KMS-protected QR keys, logged-in iPad display payloads, scan validation, check-in records/event | G10 complete |
 | 8 | Notification | Go + Cassandra | `notification_ks` | Notification fan-out and history | Deferred |
 | 9 | Analytics | Java + YugabyteDB | `analytics_db` | Attendance, revenue, and trend projections | Deferred |
 | 10 | Promotion | Java + PostgreSQL | `promotion_db` | Promotion codes and reservations | Deferred |
@@ -42,7 +42,7 @@ flowchart LR
     Kong -->|mTLS HTTPS 8443| GW[Generated Go grpc-gateway]
     GW -->|mTLS gRPC 50051| MB[Member]
     GW -->|mTLS gRPC 50051| PL[Plans]
-    GW -.->|G10 in progress: mTLS gRPC 50051| CI[Check-in]
+    GW -->|G10 complete: mTLS gRPC 50051| CI[Check-in]
 
     ID -->|mTLS: GetActiveGym for trainer validation| PL
     MB -->|mTLS: ResolvePurchasablePlan| PL

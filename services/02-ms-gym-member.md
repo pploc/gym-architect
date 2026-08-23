@@ -2,7 +2,7 @@
 
 > **Tech:** Java 26 + Spring Boot 4 | **DB:** PostgreSQL `member_db` | **Business port:** 50051 native mTLS gRPC
 >
-> **Roadmap status:** G9 complete. G10 is in progress with Stage 2 Check-in implementation underway; it changes only the Check-in-only `ValidateMembership` request/response boundary described below. Release/integration and owner acceptance remain pending. Historical G4/G5/G8/G9 evidence remains unchanged.
+> **Roadmap status:** G9 complete. G10 complete; it changed only the Check-in-only `ValidateMembership` request/response boundary described below. See [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). Historical G4/G5/G8/G9 evidence remains unchanged.
 
 ## Responsibilities
 

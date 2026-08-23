@@ -1,6 +1,6 @@
 # Business Flows
 
-> **Scope:** G0–G9 evidence remains historical. G10 is in progress with Stage 2 Check-in implementation underway with stable identity, a logged-in `SUPER_ADMIN` iPad QR display, live Member validation, and Plans-owned gym validation. Production Payment, Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
+> **Scope:** G0–G9 evidence remains historical. G10 Check-in is complete with stable identity, a logged-in `SUPER_ADMIN` iPad QR display, live Member validation, and Plans-owned gym validation; see [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). Production Payment, Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
 
 ## 1. Stable Identity Authentication
 
@@ -143,7 +143,7 @@ A future staff-assignment boundary must define ownership, persistence, revocatio
 
 ## 5. Planned G10 QR Check-in
 
-G10 is in progress and Stage 2 Check-in implementation is underway. Plans owns locations; Member owns member identity and membership decisions. The QR display is a simple iPad app used after the gym owner logs in. G10 has no kiosk registration, device secret, HTTP Basic flow, `device_id`, or independent display revocation.
+G10 Check-in is complete. Plans owns locations; Member owns member identity and membership decisions. The QR display is a simple iPad app used after the gym owner logs in. G10 has no kiosk registration, device secret, HTTP Basic flow, `device_id`, or independent display revocation.
 
 ### Display flow
 

@@ -1,6 +1,6 @@
 # Project Repository Structure
 
-> **Roadmap status:** Sibling-repository workspace. G0–G9 are complete. G10 is in progress; the `ms-gym-checkin` sibling repository exists and Stage 2 implementation is underway. Release/integration, infrastructure/gateway/Kong, locked E2E, protected CI/evidence, and owner acceptance remain pending.
+> **Roadmap status:** Sibling-repository workspace. G0–G10 are complete. The `ms-gym-checkin` sibling repository is released and proven in [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md).
 
 ## Workspace Model
 
@@ -16,7 +16,7 @@ gapi/
 ├── ms-gym-identifier/    # Go identity service
 ├── ms-gym-member/        # Java membership service
 ├── ms-gym-plans/         # Java catalog service
-└── ms-gym-checkin/       # G10 Go Check-in service; Stage 2 implementation underway
+└── ms-gym-checkin/       # G10 Go Check-in service; complete
 ```
 
 Payment, Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Check-in is active G10 scope; Stage 2 implementation is underway.
@@ -130,7 +130,7 @@ ms-gym-plans/
 
 After G9, Plans has no Spring MVC business adapter. Spring web remains only as needed for Actuator on `8080`; business gRPC uses `50051`. Filtering uses composed JPA `Specification` objects.
 
-### `ms-gym-checkin` — G10 Stage 2 implementation underway
+### `ms-gym-checkin` — G10 complete
 
 ```text
 ms-gym-checkin/
