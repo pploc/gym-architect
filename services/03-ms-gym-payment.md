@@ -1,18 +1,17 @@
 # Payment Service
 
-> **Tech:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL | **Port:** 50051 (gRPC) / 8080 (REST)
+> **Roadmap:** G11 contracts only. `ms-gym-payment` implementation is deferred; the local tree is absent and `git@github.com:pploc/ms-gym-payment.git` is empty.
+> **G11 provider:** SePay VietQR / bank-transfer webhook, `SEPAY` only. Momo, ZaloPay, and VNPay remain deferred.
+> **Tech target:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL | **Ports target:** 50051 (gRPC) / 8080 (REST)
 
 ## Responsibilities
 
-- Payment orchestration: **Momo**, **ZaloPay**, **VN bank transfer (MB Bank)**
-- Idempotent payment processing (idempotency key per request)
-- Payment types: `MEMBERSHIP` purchase/renewal, `TRAINER_BOOKING` fee
-- Refund handling (membership pause mid-cycle, booking cancellation)
-- Transaction history (customer spending, trainer coaching earnings)
-- Webhook receivers for payment provider callbacks
-- Discount code application (validates with Promotion Service)
+- SePay VietQR payment initiation and webhook completion for `MEMBERSHIP`.
+- Idempotent payment processing keyed by `(payment_type=MEMBERSHIP, reference_id=purchase_id)`.
+- Publish `payment.completed.v1` after verified completion; G8 fake-payment remains the current fixture producer.
+- Expose a native REST provider webhook without JWT.
 
----
+Refunds, transaction history, discounts, `TRAINER_BOOKING`, and other providers remain deferred implementation scope. G11 freezes contracts only; it does not implement providers, persistence, an outbox, webhook code, Kong routes, or generated Payment HTTP exposure.
 
 ## Payment Flow
 
@@ -20,330 +19,153 @@
 sequenceDiagram
     participant C as Mobile App
     participant K as Kong
-    participant PS as Payment Service
-    participant PRS as Promotion Service
-    participant PP as Payment Provider<br/>(Momo / ZaloPay)
-    participant KF as Kafka
     participant MS as Member Service
-    participant NS as Notification Service
+    participant PS as Payment Service
+    participant PP as SePay VietQR
+    participant KF as Kafka
 
-    C->>K: POST /api/v1/payments/initiate<br/>{plan_id, provider: "MOMO", discount_code?}
-    K->>PS: gRPC InitiatePayment
-
-    opt discount_code provided
-        PS->>PRS: gRPC ValidateAndReserve(code, user_id, gym_id)
-        PRS-->>PS: {valid: true, discount_percentage: 20, reservation_id}
-        PS->>PS: Apply 20% discount to amount
-    end
-
-    PS->>PS: Create PENDING payment record<br/>(idempotency_key = hash(user+plan+timestamp))
-    PS->>PP: Create payment order via Momo API
-    PP-->>PS: {payment_url, order_id}
-    PS->>PS: Store provider_order_id
-    PS-->>C: {payment_url, payment_id}
-
-    C->>PP: User opens Momo deeplink → pays
-    PP->>PS: POST /api/v1/payments/webhook/momo<br/>{order_id, status, signature}
-    PS->>PS: Verify HMAC signature
-    PS->>PS: Update payment → COMPLETED
-    PS->>PRS: gRPC ConfirmReservation(reservation_id, payment_id)
+    C->>K: Member-owned purchase route with provider: "SEPAY"
+    K->>MS: gRPC PurchaseMembership
+    MS->>PS: gRPC InitiatePayment(reference_id=purchase_id, amount_vnd)
+    PS->>PS: Create or reuse PENDING intent by (MEMBERSHIP, purchase_id)
+    PS->>PP: Create SePay VietQR payment session
+    PP-->>PS: payment_url and provider_code
+    PS-->>MS: payment_id and payment_url
+    MS-->>C: payment_id and payment_url
+    C->>PP: Complete bank transfer
+    PP->>PS: POST /api/v1/payments/webhook/sepay
+    PS->>PS: Verify raw-body signature, timestamp, direction, and amount
+    PS->>PS: Complete once; duplicate callback is idempotent
     PS->>KF: Publish payment.completed.v1
-
-    KF-->>MS: Activate/renew membership
-    KF-->>NS: Send payment receipt (SMS + email)
+    KF-->>MS: Activate membership from frozen terms
 ```
 
----
+## Domain Contract
 
-## Data Model
-
-```mermaid
-erDiagram
-    PAYMENTS {
-        uuid id PK
-        uuid user_id
-        uuid gym_id
-        bigint amount_vnd
-        bigint original_amount_vnd "before discount"
-        varchar payment_type "MEMBERSHIP | TRAINER_BOOKING"
-        uuid reference_id "purchase_id (MEMBERSHIP) | booking_id"
-        varchar provider "MOMO | ZALOPAY | MB_BANK"
-        varchar provider_order_id
-        varchar provider_tx_id
-        varchar status "PENDING | COMPLETED | FAILED | REFUNDED"
-        varchar idempotency_key UK
-        uuid discount_code_id "nullable"
-        int discount_percentage "nullable"
-        varchar failure_reason
-        timestamp created_at
-        timestamp completed_at
-    }
-
-    REFUNDS {
-        uuid id PK
-        uuid payment_id FK
-        bigint amount_vnd
-        varchar reason
-        varchar status "PENDING | COMPLETED | FAILED"
-        varchar provider_refund_id
-        timestamp created_at
-    }
-
-    PAYMENTS ||--o{ REFUNDS : "has"
-```
-
----
-
-## Payment Provider Integration
-
-### Momo
-
-```
-Endpoint: POST https://payment.momo.vn/v2/gateway/api/create
-Headers: Content-Type: application/json
-
-Request:
-  partnerCode: "GYM_CHAIN_001"
-  requestId: uuid
-  amount: 500000
-  orderId: payment_id
-  orderInfo: "Monthly Membership - FitZone Q1"
-  redirectUrl: "gymapp://payment/result"
-  ipnUrl: "https://api.gymchain.vn/api/v1/payments/webhook/momo"
-  requestType: "captureWallet"
-  signature: HMAC_SHA256(raw_data, secret_key)
-
-Webhook callback:
-  Verify: HMAC_SHA256 signature with Momo secret
-  Match: orderId → payment_id
-```
-
-### ZaloPay
-
-```
-Endpoint: POST https://sb-openapi.zalopay.vn/v2/create
-Request:
-  app_id: 12345
-  app_user: user_id
-  app_trans_id: "{yyMMdd}_{payment_id}"
-  amount: 500000
-  description: "Monthly Membership"
-  callback_url: "https://api.gymchain.vn/api/v1/payments/webhook/zalopay"
-  mac: HMAC_SHA256(data, key1)
-
-Webhook:
-  Verify: HMAC_SHA256 with key2
-```
-
-### MB Bank (VN Bank Transfer via VNPay)
-
-```
-Endpoint: POST https://pay.vnpay.vn/vpcpay.html (redirect)
-Request:
-  vnp_TmnCode: "GYM_CHAIN"
-  vnp_Amount: 50000000          # amount x 100 (VNPay convention)
-  vnp_OrderInfo: "Monthly Membership"
-  vnp_ReturnUrl: "gymapp://payment/result"
-  vnp_IpnUrl: "https://api.gymchain.vn/api/v1/payments/webhook/vnpay"
-  vnp_SecureHash: HMAC_SHA512(sorted_params, secret_key)
-
-Webhook (IPN callback):
-  Verify: HMAC_SHA512 with VNPay secret hash key
-  Match: vnp_TxnRef → payment_id
-  Check: vnp_ResponseCode == "00" means success
-  Respond: {"RspCode": "00", "Message": "Confirm Success"}
-```
-
----
+- Status: `PENDING`, `COMPLETED`, `FAILED`, `REFUNDED`.
+- G11 producer type: `MEMBERSHIP`. `TRAINER_BOOKING` remains schema-present but inactive.
+- Provider: `SEPAY` only.
+- Currency: VND; `amount_vnd` is a non-negative `int64`.
+- Cross-service IDs are opaque strings; no cross-service database foreign keys.
+- Payment uses Member's frozen amount and never re-prices or re-resolves a plan during completion.
 
 ## Idempotency
 
-Membership purchases from Member always pass `reference_id = purchase_id`.
-Member retries reuse that same `reference_id`; Payment must return the same payment intent.
+Member always sends `reference_id = purchase_id`.
 
-```
-Membership path (authoritative for ms-gym-member):
-  key = (payment_type=MEMBERSHIP, reference_id=purchase_id)
+```text
+key = (payment_type=MEMBERSHIP, reference_id=purchase_id)
 
-On InitiatePayment for MEMBERSHIP:
-  1. SELECT * FROM payments WHERE payment_type = MEMBERSHIP AND reference_id = ?
-  2. If exists AND status IN (PENDING, COMPLETED) → return existing payment_id + payment_url
-  3. If exists AND status = FAILED → create new attempt only with a new Member purchase_id
-  4. If not exists → create new PENDING record
-
-Other payment types may still use a provider-local idempotency hash, but must never mint a
-second charge for the same membership purchase_id.
+PENDING or COMPLETED -> return the same payment_id and payment_url
+FAILED -> retry requires a new Member purchase_id
+missing -> create one PENDING intent
 ```
 
----
+Payment must never mint a second charge for one membership `purchase_id`.
+
+## SePay VietQR Contract
+
+G11 freezes the provider boundary, not the provider SDK or network implementation. Clients use the existing opaque `payment_url`; raw QR fields are not added in G11.
+
+```text
+Create: SePay VietQR payment session
+Return: payment_url and provider order/code reference
+Webhook: POST /api/v1/payments/webhook/sepay
+Headers: X-SEPAY-SIGNATURE, X-SEPAY-TIMESTAMP
+Body: raw JSON; code, transferType, transferAmount, content, referenceCode
+Verify: HMAC-SHA256 over vendor-defined raw-body signing input
+Reject: invalid signature, invalid JSON, stale timestamp (> 5 minutes), transferType != in,
+        or transfer amount below the frozen amount
+Success: HTTP 200 {"success": true}; valid duplicates also return success
+```
+
+A verified callback maps the provider code/order reference to one Payment intent, transitions it once to `COMPLETED`, and publishes `payment.completed.v1` with `provider=SEPAY`. Exact field mapping and the vendor signing formula require confirmation during implementation.
+
+Momo, ZaloPay, and VNPay are deferred providers; their endpoints are not part of G11.
 
 ## Kafka Events
 
 ### Published
 
-| Topic | Key | Trigger | Payload |
-|-------|-----|---------|---------|
-| `payment.completed.v1` | `user_id` | Provider webhook confirms | `{payment_id, user_id, type, reference_id, amount_vnd, gym_id, provider}` |
-| `payment.failed` | `user_id` | Provider webhook rejects | `{payment_id, user_id, reason, gym_id, type, reference_id}` |
-| `payment.refunded` | `user_id` | Admin triggers refund | `{payment_id, user_id, refund_amount_vnd, gym_id, type, reference_id}` |
+| Topic | Key | G11 status | Payload |
+|---|---|---|---|
+| `payment.completed.v1` | `user_id` | Frozen active; G8 fixture remains the current producer | `{payment_id, user_id, type, reference_id, amount_vnd, gym_id, provider}` |
+| `payment.failed.v1` | `user_id` | Name freeze only; no producer, Registry subject, or Member consumer | Future contract |
+| `payment.refunded.v1` | `user_id` | Name freeze only; no producer, Registry subject, or Member consumer | Future contract |
 
-### Consumed
+The historical unversioned names `payment.failed` and `payment.refunded` are superseded by the `.v1` names. `{topic}.DLQ` behavior remains owned by common libraries.
 
-| Topic | Action |
-|-------|--------|
-| `membership.paused.v1` | Calculate prorated refund if applicable (non-LIFETIME, remaining > 50% cycle) |
-| `booking.cancelled` | Process full/partial refund based on cancel policy (timing-based) |
-| `booking.auto-rejected` | Process automatic 100% refund for unaccepted trainer bookings |
-| `trainer.suspended` | Process automatic 100% refund for all future bookings linked to the trainer |
+### Consumed later
 
----
+| Topic | G11 status |
+|---|---|
+| `membership.paused.v1` | Refund behavior deferred |
+| `booking.cancelled` | Trainer refund behavior deferred |
+| `booking.auto-rejected` | Trainer refund behavior deferred |
+| `trainer.suspended` | Trainer refund behavior deferred |
 
-## API
+## API Contract
 
-### gRPC (internal + gRPC-Gateway for client-facing)
+| RPC | Caller | HTTP in G11 | Policy |
+|---|---|---|---|
+| `InitiatePayment` | Member workload over mTLS | None | Active dependency; create or reuse an intent; return `payment_id` and `payment_url`. |
+| `GetPaymentStatus` | Deferred public client | Deferred | No active route. |
+| `GetSpendingHistory` | Deferred public client | Deferred | No active route. |
+| `RefundPayment` | Deferred admin | None | Later implementation phase. |
+| `GetRevenueReport` | Deferred admin | None | Later implementation phase. |
+| `GetPaymentsByUser` | Deferred internal caller | None | Later implementation phase. |
 
-```protobuf
-service PaymentService {
-  // Customer-facing (exposed via gRPC-Gateway as REST)
-  rpc InitiatePayment(InitiatePaymentRequest) returns (InitiatePaymentResponse);
-  rpc GetPaymentStatus(GetPaymentStatusRequest) returns (PaymentStatusResponse);
-  rpc GetSpendingHistory(GetSpendingHistoryRequest) returns (SpendingHistoryResponse);
+Payment public methods remain in deferred `payment_http.yaml`; G11 does not promote them into inline `google.api.http`, generated OpenAPI, or Kong routes.
 
-  // Admin
-  rpc RefundPayment(RefundPaymentRequest) returns (RefundResponse);
-  rpc GetRevenueReport(RevenueReportRequest) returns (RevenueReportResponse);
+## Native Webhook Boundary
 
-  // Internal (service-to-service only, blocked from Kong external routes)
-  rpc GetPaymentsByUser(GetPaymentsByUserRequest) returns (PaymentsResponse);
-}
-```
-
-### Native REST Endpoints (NOT gRPC-Gateway)
-
-Payment provider webhooks are **plain Spring MVC REST controllers**, not gRPC methods.
-Providers send proprietary JSON/form-encoded payloads in their own format — gRPC-Gateway
-would reject unknown fields or mismatched structures with 400.
+The SePay webhook is a plain Spring MVC REST controller, not a gRPC method. It must preserve raw request bytes for signature verification and has no JWT.
 
 ```java
-// adapter/in/rest/WebhookController.java — Spring @RestController
-
 @RestController
 @RequestMapping("/api/v1/payments/webhook")
 public class WebhookController {
-
-    @PostMapping("/momo")       // Momo sends JSON with their own schema
-    public ResponseEntity<Map<String, Object>> momoCallback(@RequestBody Map<String, Object> payload) { ... }
-
-    @PostMapping("/zalopay")    // ZaloPay sends JSON with mac field
-    public ResponseEntity<Map<String, Object>> zalopayCallback(@RequestBody Map<String, Object> payload) { ... }
-
-    @PostMapping("/vnpay")      // VNPay sends query params (GET or POST)
-    public ResponseEntity<Map<String, String>> vnpayCallback(@RequestParam Map<String, String> params) { ... }
+    @PostMapping("/sepay")
+    public ResponseEntity<Map<String, Object>> sepayCallback(
+            HttpServletRequest request) throws IOException {
+        byte[] rawBody = request.getInputStream().readAllBytes();
+        // Verify X-SEPAY-SIGNATURE against rawBody before parsing JSON.
+        // ...
+        return ResponseEntity.ok(Map.of("success", true));
+    }
 }
 ```
 
-**Why native REST, not gRPC-Gateway:**
-- Provider payload schemas change without notice — raw `Map` parsing is resilient
-- VNPay sends query parameters, not JSON body — gRPC-Gateway can't handle this
-- Webhook signature verification needs raw request bytes — gRPC-Gateway transforms the body
-- These endpoints have no JWT (disabled in Kong) — they use HMAC signature verification instead
+Valid duplicate callbacks return HTTP 200 without a second completion event. Orphan persistence, alerting, and retry handling remain implementation-phase work.
 
----
+## Errors
 
-## Orphan Webhook Handling
+Use canonical gRPC statuses and stable `x-error-code` values through `common-java`:
 
-```
-If webhook arrives but no matching payment record exists:
+| Condition | Status | Error code |
+|---|---|---|
+| Invalid field, amount, provider, or type | `INVALID_ARGUMENT` | `INVALID_ARGUMENT` |
+| Missing payment reference | `NOT_FOUND` | `PAYMENT_NOT_FOUND` |
+| Duplicate completed provider mismatch | `FAILED_PRECONDITION` | `PAYMENT_STATE_INVALID` |
+| Missing workload authentication | `UNAUTHENTICATED` | `UNAUTHENTICATED` |
+| Workload role denial | `PERMISSION_DENIED` | `FORBIDDEN` |
+| Provider, Kafka, or Registry unavailable | `UNAVAILABLE` | `PAYMENT_UNAVAILABLE` |
 
-  1. Log full payload to dead_letter_webhooks table:
-     dead_letter_webhooks(id, provider, payload_json, received_at, resolved)
+Webhook authentication failures use HTTP `400` or `401`, not gRPC errors. Do not leak provider internal exception text.
 
-  2. Return HTTP 200 to provider (prevent retry storm)
+## G11 Boundary
 
-  3. Alert ops team via monitoring (Prometheus counter: payment_webhook_orphan_total)
+G11 includes documentation contract matrices only. It does not include:
 
-  4. Possible causes:
-     - Provider callback arrived before DB commit (race condition)
-     - Record was purged or DB error during creation
-     - Replay attack with fabricated order_id
+- cloning or scaffolding `ms-gym-payment`;
+- SePay SDK network calls;
+- Payment Kong routes, generated OpenAPI, or active `google.api.http` annotations;
+- failed/refunded producers, Registry subjects, or Member consumers;
+- Promotion reservations, refunds, trainer payments, or raw QR fields;
+- replacement of the G8 fake-payment fixture.
 
-  5. Resolution: Ops reviews dead_letter_webhooks, manually reconciles if legitimate
-```
+## Implementation-Phase Notes
 
----
+The later implementation phase clones the empty remote, builds the Spring service/PostgreSQL schema and outbox, implements the SePay client and webhook controller, enforces Member-only mTLS SAN policy, replaces the fake fixture, and then opens gateway exposure and deferred event families.
 
-## Discount Code Atomicity
-
-```
-Problem: ValidateDiscount + pay + RedeemDiscount = 3 separate steps.
-  If payment succeeds but RedeemDiscount fails, code reusable beyond limits.
-
-Solution: Reservation pattern
-
-  1. Payment Service calls ValidateAndReserve(code, user_id)
-     → Promotion Service atomically validates + increments current_usage
-     → Returns reservation_id (TTL 30 min)
-
-  2. If payment completes:
-     → Payment Service calls ConfirmReservation(reservation_id)
-     → Promotion Service commits the redemption record
-
-  3. If payment fails or times out:
-     → Reservation auto-expires (scheduled cleanup decrements current_usage)
-     → Or Payment Service calls ReleaseReservation(reservation_id)
-
-This prevents double-use even under concurrent requests.
-```
-
----
-
-## Clean Architecture
-
-```
-src/main/java/com/gym/payment/
-├── domain/
-│   ├── model/
-│   │   ├── Payment.java
-│   │   ├── Refund.java
-│   │   ├── PaymentStatus.java         // PENDING, COMPLETED, FAILED, REFUNDED
-│   │   ├── PaymentType.java           // MEMBERSHIP, TRAINER_BOOKING
-│   │   └── PaymentProvider.java       // MOMO, ZALOPAY, MB_BANK
-│   └── exception/
-│       ├── PaymentAlreadyCompletedException.java
-│       └── InvalidWebhookSignatureException.java
-├── application/
-│   ├── port/
-│   │   ├── in/
-│   │   │   ├── InitiatePaymentUseCase.java
-│   │   │   ├── ProcessWebhookUseCase.java
-│   │   │   └── RefundPaymentUseCase.java
-│   │   └── out/
-│   │       ├── PaymentRepository.java
-│   │       ├── PaymentProviderGateway.java   // interface for Momo/ZaloPay/MB
-│   │       ├── PromotionClient.java
-│   │       └── EventPublisher.java
-│   └── service/
-│       └── PaymentService.java
-├── adapter/
-│   ├── in/grpc/
-│   │   ├── PaymentGrpcHandler.java
-│   │   └── PaymentProtoMapper.java
-│   ├── in/rest/                             // native REST (NOT gRPC-Gateway)
-│   │   └── WebhookController.java           // Momo/ZaloPay/VNPay webhook endpoints
-│   ├── out/persistence/
-│   │   ├── PaymentJpaEntity.java
-│   │   └── PaymentPersistenceAdapter.java
-│   ├── out/provider/                       // strategy pattern
-│   │   ├── MomoPaymentGateway.java         // implements PaymentProviderGateway
-│   │   ├── ZaloPayPaymentGateway.java
-│   │   ├── MBBankPaymentGateway.java
-│   │   └── PaymentProviderFactory.java     // returns correct gateway by enum
-│   ├── out/grpc/
-│   │   └── PromotionGrpcClient.java
-│   └── out/kafka/
-│       ├── PaymentEventPublisher.java
-│       └── PaymentEventConsumer.java
-└── config/
-    ├── PaymentProviderConfig.java
-    └── GrpcConfig.java
-```
+Open risks: exact SePay `code` to Payment order mapping, exact HMAC string-to-sign, and whether clients eventually need raw VietQR content beyond `payment_url`.

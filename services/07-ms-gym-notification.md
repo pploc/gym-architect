@@ -24,7 +24,7 @@ flowchart LR
         E4[booking.accepted]
         E5[booking.rejected]
         E6[payment.completed.v1]
-        E7[payment.failed]
+        E7[payment.failed.v1]
         E8[membership.expired.v1]
         E9[identity.email.verification-requested.v1]
     end
@@ -62,7 +62,7 @@ flowchart LR
 | `booking.rejected` | Customer | Push | "HLV {trainer_name} không thể nhận lịch. Đã hoàn tiền." |
 | `payment.completed.v1` | Customer | Email | Payment receipt with details |
 | `identity.email.verification-requested.v1` | Customer | Email | "Xác minh email: {verification_url}" (do not log URL; store template id only) |
-| `payment.failed` | Customer | Push + SMS | "Thanh toán thất bại. Vui lòng thử lại." |
+| `payment.failed.v1` | Customer | Push + SMS | "Thanh toán thất bại. Vui lòng thử lại." |
 
 ---
 
@@ -178,8 +178,8 @@ Topics subscribed:
   - booking.cancelled
   - booking.auto-rejected
   - payment.completed.v1
-  - payment.failed
-  - payment.refunded
+  - payment.failed.v1
+  - payment.refunded.v1
   - trainer.suspended
   - analytics.member-at-risk
 ```

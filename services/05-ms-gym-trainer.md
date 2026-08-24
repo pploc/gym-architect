@@ -34,7 +34,7 @@ sequenceDiagram
 
     C->>PS: InitiatePayment(type=TRAINER_BOOKING, ref=booking_id)
     PS-->>C: {payment_url}
-    C->>C: Pay via Momo/ZaloPay
+    C->>C: Complete payment via returned payment_url
 
     PS->>KF: payment.completed.v1 (type=TRAINER_BOOKING)
     KF-->>TS: Consume payment.completed.v1
@@ -112,7 +112,7 @@ Scheduled Job: BookingTrainerTimeoutJob
     2. Release slot
     3. Publish: booking.auto-rejected {booking_id, customer_id, trainer_id}
        → Notification Service sends: "HLV chua phan hoi. Da hoan tien."
-       → Payment Service triggers refund via payment.refunded event
+       → Payment Service triggers refund via payment.refunded.v1 event
 ```
 
 ---
@@ -281,7 +281,7 @@ Example:
 | Topic | Action |
 |-------|--------|
 | `payment.completed.v1` (type=TRAINER_BOOKING) | Move booking from PENDING_PAYMENT → REQUESTED |
-| `payment.refunded` (ref=booking_id) | Move booking to CANCELLED |
+| `payment.refunded.v1` (ref=booking_id) | Move booking to CANCELLED |
 | `identity.user.suspended.v1` | If user is Trainer: freeze profile, cancel all future bookings, publish cancellations.<br/>If user is Customer: cancel all future bookings, publish cancellations. |
 
 ---

@@ -37,7 +37,7 @@ sequenceDiagram
     participant PL as Plans
     participant MB as Member
     participant DB as member_db
-    participant FP as G8 Fake Payment
+    participant FP as G8 Fake Payment<br/>(future: SePay Payment)
     participant KF as Kafka
 
     rect rgb(230,245,255)
@@ -74,7 +74,7 @@ sequenceDiagram
     end
 
     rect rgb(230,255,230)
-        FP->>KF: payment.completed.v1 reference_id=purchase_id
+        FP->>KF: payment.completed.v1 reference_id=purchase_id<br/>(future Payment producer: provider=SEPAY)
         KF-->>MB: Completion event
         MB->>DB: Claim event + lock purchase in one transaction
         MB->>DB: Activate from frozen terms and mark completed

@@ -1,6 +1,6 @@
 # Kafka Event Catalog
 
-> **Roadmap status:** G9's released Kafka baseline remains historical. The current `common-go` frozen topic/type map also includes `identity.email.verification-requested.v1`. G10 completed `checkin.recorded.v1` outbox publish proof; see [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). Plans has no Kafka participation.
+> **Roadmap status:** G9's released Kafka baseline remains historical. The current `common-go` frozen topic/type map also includes `identity.email.verification-requested.v1`. G10 completed `checkin.recorded.v1` outbox publish proof; see [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). G11 freezes Payment contracts only: G8 fake remains the `payment.completed.v1` producer until a later Payment implementation phase. Plans has no Kafka participation.
 
 Kafka values use concrete Protobuf messages with Schema Registry framing. Kafka is greenfield: no JSON topics, envelopes, or deployed offsets require compatibility adapters.
 
@@ -172,7 +172,7 @@ These topic families remain deferred:
 
 | Domain | Future topics |
 |---|---|
-| Payment | `payment.failed`, `payment.refunded` |
+| Payment | `payment.failed.v1`, `payment.refunded.v1` (G11 name freeze only; no active producer, Registry subject, or consumer) |
 | Workout | `workout.logged` |
 | Trainer booking | `booking.requested`, `booking.accepted`, `booking.rejected`, `booking.completed`, `booking.cancelled`, `booking.expired`, `booking.auto-rejected` |
 | Promotion | `promotion.published` |

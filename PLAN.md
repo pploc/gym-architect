@@ -2,31 +2,31 @@
 
 ## Authoritative execution plan
 
-Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G9 foundation for Identifier, Member, and Plans is technically complete; owner approval remains separate. G9 uses Kong in front of generated Go `grpc-gateway` for Member and Plans browser APIs. Final immutable-release, locked clean-source, protected-CI, and sanitized-evidence proof is recorded in [`evidence/foundation-first/p9-final/README.md`](evidence/foundation-first/p9-final/README.md). G10 Check-in is complete: locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance are recorded in [`evidence/foundation-first/g10-final/README.md`](evidence/foundation-first/g10-final/README.md). Other deferred services stay catalog-only until a later roadmap gate.
+Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G9 foundation for Identifier, Member, and Plans is technically complete; owner approval remains separate. G9 uses Kong in front of generated Go `grpc-gateway` for Member and Plans browser APIs. Final immutable-release, locked clean-source, protected-CI, and sanitized-evidence proof is recorded in [`evidence/foundation-first/p9-final/README.md`](evidence/foundation-first/p9-final/README.md). G10 Check-in is complete: locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance are recorded in [`evidence/foundation-first/g10-final/README.md`](evidence/foundation-first/g10-final/README.md). G11 opens Payment contracts only; `ms-gym-payment` implementation remains deferred.
 
-## Active and planned services
+## Active planned services
 
 | Service | Status | Stack | Database | Ownership |
 |---|---|---|---|---|
-| `ms-gym-identifier` | Implemented | Go + Gin | PostgreSQL `identity_db` | Identity, credentials, and stable identity tokens |
-| `ms-gym-member` | Implemented | Java 26 + Spring Boot 4 | PostgreSQL `member_db` | Profiles, subscriptions, membership lifecycle and validation |
+| `ms-gym-identifier` | Implemented | Go + Gin | PostgreSQL `identity_db` | Identity, credentials, stable identity tokens |
+| `ms-gym-member` | Implemented | Java 26 + Spring Boot 4 | PostgreSQL `member_db` | Profiles, subscriptions, membership lifecycle validation |
 | `ms-gym-plans` | Implemented | Java 26 + Spring Boot 4 | PostgreSQL `plans_db` | Gym locations, gym-specific plans, VND pricing |
 | `ms-gym-checkin` | G10 complete | Go gRPC + `net/http` health | YugabyteDB `checkin_db` | AWS KMS-protected QR keys, logged-in iPad display payloads, scan validation, check-in records, and `checkin.recorded.v1` |
+| `ms-gym-payment` | G11 contracts only | Java 26 + Spring Boot 4 | PostgreSQL | SePay-first Payment contracts; implementation deferred |
 
 ## Deferred catalog
 
-These services remain documented for architecture continuity but have no actionable implementation phase yet:
+These services remain architecture entries without an actionable implementation phase. Payment has a contracts-only G11 gate; its implementation remains deferred.
 
 | Service | Intended stack | Intended database | Future role |
 |---|---|---|---|
-| `ms-gym-payment` | Java 26 + Spring Boot 4 | PostgreSQL | Provider payments, refunds, transaction history |
 | `ms-gym-workout` | Go + Gin | Cassandra | Workout logging |
 | `ms-gym-trainer` | Java 26 + Spring Boot 4 | PostgreSQL | Trainer schedules and bookings |
 | `ms-gym-promotion` | Java 26 + Spring Boot 4 | PostgreSQL | Discount campaigns and coupon reservations |
 | `ms-gym-notification` | Go + Gin | Cassandra | Notification fan-out and delivery history |
 | `ms-gym-analytics` | Java 26 + Spring Boot 4 | YugabyteDB | Materialized reports and trends |
 
-Do not treat deferred service documents as implementation instructions until roadmap adds a gate for them.
+Do not treat deferred service documents as implementation instructions until the roadmap adds a gate.
 
 ## Current dependency order
 
@@ -38,6 +38,7 @@ flowchart LR
     I --> S[Phase 9 Stage 0<br/>Stable identity + explicit gym context]
     S --> G[Phase 9 Stages 1-4<br/>Kong gRPC-Gateway + generated OpenAPI 3.0]
     G --> K[Phase 10<br/>Implement ms-gym-checkin]
+    K --> Q[Phase 11<br/>Payment contracts]
 ```
 
 ## Target service interaction
