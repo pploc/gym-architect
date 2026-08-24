@@ -2,7 +2,7 @@
 
 ## Authoritative execution plan
 
-Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G9 foundation for Identifier, Member, and Plans is technically complete; owner approval remains separate. G9 uses Kong in front of generated Go `grpc-gateway` for Member and Plans browser APIs. Final immutable-release, locked clean-source, protected-CI, and sanitized-evidence proof is recorded in [`evidence/foundation-first/p9-final/README.md`](evidence/foundation-first/p9-final/README.md). G10 Check-in is complete: locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance are recorded in [`evidence/foundation-first/g10-final/README.md`](evidence/foundation-first/g10-final/README.md). G11 opens Payment contracts only; `ms-gym-payment` implementation remains deferred.
+Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0–G9 foundation for Identifier, Member, and Plans is technically complete; owner approval remains separate. G9 uses Kong in front of generated Go `grpc-gateway` for Member and Plans browser APIs. Final immutable-release, locked clean-source, protected-CI, and sanitized-evidence proof is recorded in [`evidence/foundation-first/p9-final/README.md`](evidence/foundation-first/p9-final/README.md). G10 Check-in is complete: locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance are recorded in [`evidence/foundation-first/g10-final/README.md`](evidence/foundation-first/g10-final/README.md). G11 is implementing `ms-gym-payment`; locked-gate completion remains pending.
 
 ## Active planned services
 
@@ -12,11 +12,11 @@ Use [`plans/foundation-first/README.md`](plans/foundation-first/README.md). G0�
 | `ms-gym-member` | Implemented | Java 26 + Spring Boot 4 | PostgreSQL `member_db` | Profiles, subscriptions, membership lifecycle validation |
 | `ms-gym-plans` | Implemented | Java 26 + Spring Boot 4 | PostgreSQL `plans_db` | Gym locations, gym-specific plans, VND pricing |
 | `ms-gym-checkin` | G10 complete | Go gRPC + `net/http` health | YugabyteDB `checkin_db` | AWS KMS-protected QR keys, logged-in iPad display payloads, scan validation, check-in records, and `checkin.recorded.v1` |
-| `ms-gym-payment` | G11 contracts only | Java 26 + Spring Boot 4 | PostgreSQL | SePay-first Payment contracts; implementation deferred |
+| `ms-gym-payment` | G11 implementation in progress | Java 26 + Spring Boot 4 | PostgreSQL `payment_db` | Membership-only SePay intents, verified webhooks, outbox, and locked gate |
 
 ## Deferred catalog
 
-These services remain architecture entries without an actionable implementation phase. Payment has a contracts-only G11 gate; its implementation remains deferred.
+These services remain architecture entries without an actionable implementation phase. Payment is active only through the membership-only G11 locked gate.
 
 | Service | Intended stack | Intended database | Future role |
 |---|---|---|---|
@@ -38,7 +38,7 @@ flowchart LR
     I --> S[Phase 9 Stage 0<br/>Stable identity + explicit gym context]
     S --> G[Phase 9 Stages 1-4<br/>Kong gRPC-Gateway + generated OpenAPI 3.0]
     G --> K[Phase 10<br/>Implement ms-gym-checkin]
-    K --> Q[Phase 11<br/>Payment contracts]
+    K --> Q[Phase 11<br/>Implement Payment + locked gate]
 ```
 
 ## Target service interaction
@@ -54,9 +54,12 @@ flowchart LR
     CI -->|ValidateMembership user + signed gym| MB
     CI -->|ValidateCheckInGym during provisioning| PL
     CI -->|transactional outbox| K[Kafka checkin.recorded.v1]
+    MB -->|mTLS InitiatePayment| PM[Payment]
+    SP[SePay] -->|HTTPS verified webhook| PM
+    PM -.->|G11 locked pass only| PK[Kafka payment.completed.v1]
 ```
 
-Member keeps `PurchaseMembership`; production Payment remains deferred. G8 proved the outbound Payment port with `gym-infra/kong/fixtures/fake-payment`. Check-in G10 is complete; no downstream Notification or Analytics consumer is opened.
+Member keeps `PurchaseMembership`; G11 implements the real Payment service behind Member-only mTLS and a native SePay webhook. G8 fake-payment remains the current producer until locked G11 proof succeeds. Check-in G10 is complete; no downstream Notification or Analytics consumer is opened.
 
 ## Change index
 
@@ -64,7 +67,8 @@ Member keeps `PurchaseMembership`; production Payment remains deferred. G8 prove
 |---|---|
 | Plans API or fields | Phase 6, `gym-proto`, Plans service spec, Member purchase boundary |
 | Gym ownership | Architecture overview, Identifier, Member, Plans, Check-in boundary, infrastructure routes |
-| Subscription terms | Member spec, Plans spec, purchase flow, future Payment boundary |
+| Subscription terms | Member spec, Plans spec, purchase flow, Payment boundary |
+| Payment webhook or intent | Phase 11, Payment service spec, SePay pin, flow, infrastructure, Kafka ownership, locked evidence |
 | External route | Protobuf `google.api.http` annotation, generated OpenAPI 3.0, Kong route documentation, NetworkPolicy documentation |
 | Kafka event | Kafka catalog, canonical Protobuf event, producer/consumer ownership |
 | Check-in trust or storage | Phase 10, Check-in service spec, Member/Plans workload boundaries, QR/no-device-lifecycle/key rules, Yugabyte/AWS KMS/Kafka infrastructure |

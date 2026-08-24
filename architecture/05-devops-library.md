@@ -45,7 +45,7 @@ common-devops/
 
 ## 1. Reusable Helm Chart (`gym-service`)
 
-A single, highly configurable Helm chart is used to deploy any of the 9 microservices. Each service overrides this chart using its own `values.yaml`.
+A single, configurable Helm chart is used to deploy active services. Each service overrides it with its own `values.yaml`; G11 adds `ms-gym-payment` as an in-progress Java service.
 
 ### `Chart.yaml`
 ```yaml
@@ -196,11 +196,11 @@ jobs:
 
 ---
 
-## How Monorepo References Shared DevOps
+## How Sibling Repositories Reference Shared DevOps
 
-In the main `gym-chain` repository, service workflows reference these templates directly.
+The workspace is sibling repositories, not a deployable monorepo. Service repositories reference these reusable templates directly; the former monorepo wording is historical. G11 may reuse the Java CI, image, and Helm workflows for `ms-gym-payment` after its service repository exists.
 
-### Example: `.github/workflows/ms-gym-member.yml`
+### Historical layout example: `.github/workflows/ms-gym-member.yml`
 ```yaml
 name: Member Service Pipeline
 

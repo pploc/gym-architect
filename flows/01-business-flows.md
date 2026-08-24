@@ -1,6 +1,6 @@
 # Business Flows
 
-> **Scope:** G0–G9 evidence remains historical. G10 Check-in is complete with stable identity, a logged-in `SUPER_ADMIN` iPad QR display, live Member validation, and Plans-owned gym validation; see [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). Production Payment, Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
+> **Scope:** G0–G10 evidence remains historical. G11 Payment implementation is in progress for membership-only SePay; G8 fake-payment remains the current producer until locked proof passes. Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
 
 ## 1. Stable Identity Authentication
 
@@ -37,7 +37,9 @@ sequenceDiagram
     participant PL as Plans
     participant MB as Member
     participant DB as member_db
-    participant FP as G8 Fake Payment<br/>(future: SePay Payment)
+    participant PM as Payment<br/>(G11 locked pass)
+    participant SP as SePay
+    participant FP as G8 Fake Payment<br/>(current producer)
     participant KF as Kafka
 
     rect rgb(230,245,255)
@@ -67,14 +69,19 @@ sequenceDiagram
         PL-->>MB: Canonical active gym, plan, type, duration, price_vnd
         MB->>DB: Create/load PENDING purchase by (user_id, idempotency_key)
         Note over MB,DB: Commit before Payment; stable purchase_id
-        MB->>FP: InitiatePayment(reference_id=purchase_id)
-        FP-->>MB: payment_id, payment_url
+        MB->>PM: mTLS InitiatePayment(reference_id=purchase_id, frozen amount)
+        PM-->>MB: payment_id, opaque VietQR payment_url
         MB->>DB: Attach payment_id
         MB-->>APP: payment_id, payment_url
+        Note over FP,PM: FP remains current until the G11 locked pass cuts over Payment
     end
 
     rect rgb(230,255,230)
-        FP->>KF: payment.completed.v1 reference_id=purchase_id<br/>(future Payment producer: provider=SEPAY)
+        SP->>PM: HTTPS webhook: raw body + HMAC headers
+        PM->>PM: Verify sha256 HMAC(timestamp.raw_body), ±5m, exact code, inbound, amount
+        PM->>PM: Record receipt; complete once; store actual overpay
+        PM-->>SP: 200/201 {"success":true} within 30s
+        PM->>KF: payment.completed.v1 frozen amount<br/>(G11 locked pass; FP remains current otherwise)
         KF-->>MB: Completion event
         MB->>DB: Claim event + lock purchase in one transaction
         MB->>DB: Activate from frozen terms and mark completed
@@ -90,9 +97,10 @@ Rules:
 - Member derives user identity from Kong-verified metadata and checks ownership.
 - Required `idempotency_key` reuses one purchase and Payment reference.
 - Optional `discount_code` remains in the contract; nonblank values fail until Promotion exists.
-- Completion validates purchase, payment, user, gym, type, provider, amount, and state.
+- Payment accepts only `SEPAY`/`MEMBERSHIP`, has Member-only mTLS initiation, and exposes no Kong/public Payment RPC; native SePay HTTPS webhook verifies HMAC over exact raw bytes and timestamp before parsing.
+- Completion validates purchase, payment, user, gym, type, provider, amount, and state; overpayment retains actual received VND but event amount remains frozen.
 - Completion uses frozen terms and never rereads Plans.
-- Public traffic is HTTPS/JSON through Kong; Kong uses mTLS gRPC to Member and Plans.
+- Public traffic is HTTPS/JSON through Kong; Kong uses mTLS gRPC to Member and Plans. SePay calls only the native Payment webhook.
 
 ## 3. Membership Status, Pause, and Resume
 
@@ -209,13 +217,13 @@ Check-in never trusts JWT `membership_status`, never calls Member for location d
 
 ## 6. Deferred Catalog Flows
 
-These remain designs, not G10 implementation commitments:
+**Supersession note — 2026-08-24:** production membership Payment webhook work is active only in the G11 locked gate. These remain designs outside that narrow scope:
 
 - Workout logging and explicit Member membership validation
 - Trainer search, availability, booking, payment, and approval
 - Promotion publication and notification fan-out
 - Membership expiry notifications
-- Production Payment provider webhooks, refunds, and history
+- Payment refunds and history
 - Analytics projections and dashboards
 
 ## 7. Admin Creates Trainer Account

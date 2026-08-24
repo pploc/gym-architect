@@ -1,6 +1,6 @@
 # Project Repository Structure
 
-> **Roadmap status:** Sibling-repository workspace. G0–G10 are complete. The `ms-gym-checkin` sibling repository is released and proven in [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md).
+> **Roadmap status:** Sibling-repository workspace. G0–G10 are complete. G11 is creating `ms-gym-payment`; its locked gate remains in progress. The Check-in completion evidence remains unchanged.
 
 ## Workspace Model
 
@@ -16,10 +16,11 @@ gapi/
 ├── ms-gym-identifier/    # Go identity service
 ├── ms-gym-member/        # Java membership service
 ├── ms-gym-plans/         # Java catalog service
-└── ms-gym-checkin/       # G10 Go Check-in service; complete
+├── ms-gym-checkin/       # G10 Go Check-in service; complete
+└── ms-gym-payment/       # G11 Java Payment service; implementation in progress
 ```
 
-Payment, Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Check-in G10 is complete.
+Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Payment is active only for the membership-only G11 locked gate; Check-in G10 is complete.
 
 ## Contract Repository
 
@@ -130,6 +131,27 @@ ms-gym-plans/
 
 After G9, Plans has no Spring MVC business adapter. Spring web remains only as needed for Actuator on `8080`; business gRPC uses `50051`. Filtering uses composed JPA `Specification` objects.
 
+### `ms-gym-payment` — G11 implementation in progress
+
+```text
+ms-gym-payment/
+├── src/main/java/com/gym/payment/
+│   ├── domain/                    # intents and webhook receipts
+│   ├── application/               # initiate and complete commands
+│   ├── adapter/in/{grpc,http}/    # Member mTLS and native SePay webhook
+│   ├── adapter/out/{persistence,kafka}/
+│   └── config/
+├── src/main/resources/db/migration/
+├── src/test/
+├── docker-compose.yml
+├── Dockerfile
+├── build.gradle
+├── gradlew
+└── README.md
+```
+
+Payment owns `payment_intents`, `payment_webhook_receipts`, and its transactional outbox in `payment_db`. It exposes `InitiatePayment` only to Member mTLS and `POST /api/v1/payments/webhook/sepay` only as HTTPS native provider ingress. No public Payment RPC/Kong/OpenAPI route exists. G8 fake-payment remains current producer until locked G11 proof succeeds.
+
 ### `ms-gym-checkin` — G10 complete
 
 ```text
@@ -172,13 +194,14 @@ gym-infra/
 │   ├── generated-gateway/
 │   ├── g9-business-check.sh
 │   ├── run-g9.sh
-│   ├── g10-*                       # Planned additive Check-in lock/fixture/runner
-│   └── fixtures/fake-payment/
+│   ├── g10-*                       # Historical Check-in lock/fixture/runner
+│   ├── g11-*                       # In-progress Payment lock/fixture/runner
+│   └── fixtures/fake-payment/       # Historical/current producer until G11 locks
 ├── helm/gym-service/
 └── .github/workflows/
 ```
 
-G9 fixtures and evidence remain unchanged. G10 adds its own release lock, detached-source materializer, digest-pinned runner, protected workflow, and sanitized evidence directory.
+G9/G10 fixtures and evidence remain unchanged. G11 adds its own Payment release lock, detached-source materializer, digest-pinned runner, protected workflow, and sanitized evidence directory; it does not alter historical fake-payment proof.
 
 ## Development Commands
 
@@ -201,6 +224,10 @@ ms-gym-member$ ./gradlew stopEnv
 ms-gym-plans$ ./gradlew startEnv
 ms-gym-plans$ ./gradlew clean check
 ms-gym-plans$ ./gradlew stopEnv
+
+ms-gym-payment$ ./gradlew startEnv
+ms-gym-payment$ ./gradlew test
+ms-gym-payment$ ./gradlew stopEnv
 ```
 
 ## Dependency Rules
@@ -215,5 +242,6 @@ ms-gym-plans$ ./gradlew stopEnv
 - Public Member/Plans/Check-in routes come from inline annotations; internal workload RPCs remain unmapped.
 - Plans and Member filtering uses Spring Data JPA Specifications, not custom persistence queries.
 - Check-in reuses `common-go`, standard-library crypto/HTTP, official AWS SDK for Go v2 KMS client, and existing generated gateway; no generic repository, shared crypto framework, or parallel gateway.
+- Payment uses existing Java/common-library Kafka and mTLS patterns plus JDK HMAC-SHA256; no SePay SDK, Payment public API, or new wire contract.
 
-See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md), [Check-in service](../services/06-ms-gym-checkin.md), and [Plans service](../services/10-ms-gym-plans.md).
+See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md), [Phase 11](../plans/foundation-first/11-payment-contracts.md), [Payment service](../services/03-ms-gym-payment.md), [Check-in service](../services/06-ms-gym-checkin.md), and [Plans service](../services/10-ms-gym-plans.md).

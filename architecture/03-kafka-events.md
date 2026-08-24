@@ -1,6 +1,6 @@
 # Kafka Event Catalog
 
-> **Roadmap status:** G9's released Kafka baseline remains historical. The current `common-go` frozen topic/type map also includes `identity.email.verification-requested.v1`. G10 completed `checkin.recorded.v1` outbox publish proof; see [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). G11 freezes Payment contracts only: G8 fake remains the `payment.completed.v1` producer until a later Payment implementation phase. Plans has no Kafka participation.
+> **Roadmap status:** G9's released Kafka baseline remains historical. The current `common-go` frozen topic/type map also includes `identity.email.verification-requested.v1`. G10 completed `checkin.recorded.v1` outbox publish proof; see [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). G11 Payment implementation is in progress: G8 fake remains the current `payment.completed.v1` producer until the locked pass proves the real Payment outbox. Plans has no Kafka participation.
 
 Kafka values use concrete Protobuf messages with Schema Registry framing. Kafka is greenfield: no JSON topics, envelopes, or deployed offsets require compatibility adapters.
 
@@ -13,7 +13,7 @@ Closed event fields use `common.v1` prefixed enums (for example `PaymentType.PAY
 | `UserRegisteredEvent` | `identity.user.registered.v1` | `identity.user.registered.v1-value` | Identifier |
 | `UserSuspendedEvent` | `identity.user.suspended.v1` | `identity.user.suspended.v1-value` | Identifier |
 | `UserRoleChangedEvent` | `identity.user.role-changed.v1` | `identity.user.role-changed.v1-value` | Identifier |
-| `PaymentCompletedEvent` | `payment.completed.v1` | `payment.completed.v1-value` | G8 fake Payment fixture; production Payment deferred |
+| `PaymentCompletedEvent` | `payment.completed.v1` | `payment.completed.v1-value` | G8 fake Payment fixture now; Payment transactional outbox only after locked G11 pass |
 | `MembershipActivatedEvent` | `membership.activated.v1` | `membership.activated.v1-value` | Member |
 | `MembershipPausedEvent` | `membership.paused.v1` | `membership.paused.v1-value` | Member |
 | `MembershipResumedEvent` | `membership.resumed.v1` | `membership.resumed.v1-value` | Member |
@@ -25,6 +25,10 @@ Closed event fields use `common.v1` prefixed enums (for example `PaymentType.PAY
 Topic names follow `{domain}.{entity}.{action}.v1`. Subjects use `TopicNameStrategy` (`<topic>-value`). Production uses `auto.register.schemas=false`. Member's consumer group is `ms-gym-member-v1`; DLQ topics use `{topic}.DLQ`.
 
 Enum string→enum wire breaks overwrite the same `.v1-value` subjects in place under paused traffic (no dual `.v2` topics/subjects). Compatibility mode for that cutover is not BACKWARD against the prior string schema; treat as coordinated greenfield subject replacement on disposable pre-production clusters.
+
+## Current G8 Producer and In-Progress G11 Cutover
+
+**Supersession note — 2026-08-24:** this diagram retains the historical G8 producer. Payment implementation is active, but its transactional outbox replaces the fake only after the locked G11 pass; no active `payment.failed.v1` or `payment.refunded.v1` behavior is added.
 
 ## G8 Event Flow
 
@@ -144,8 +148,8 @@ Notification and Analytics consumers remain deferred service-catalog behavior.
 | `user_id` | string | Must match frozen purchase owner |
 | `type` | string | Must equal `MEMBERSHIP` |
 | `reference_id` | string | Member-owned `purchase_id`, never `plan_id` |
-| `amount_vnd` | int64 | Must equal frozen `price_vnd` |
-| `provider` | string | Must match initiated provider policy |
+| `amount_vnd` | int64 | Frozen Member `price_vnd`; retained even when Payment records an accepted overpayment |
+| `provider` | string | Must equal `SEPAY` in G11 and match initiated provider policy |
 | `gym_id` | string | Must match frozen purchase gym |
 | `discount_applied` | bool | False in G8 membership fixture |
 | `discount_percentage` | int32 | Zero in G8 membership fixture |
@@ -172,7 +176,7 @@ These topic families remain deferred:
 
 | Domain | Future topics |
 |---|---|
-| Payment | `payment.failed.v1`, `payment.refunded.v1` (G11 name freeze only; no active producer, Registry subject, or consumer) |
+| Payment | `payment.failed.v1`, `payment.refunded.v1` (G11 names only; no active producer, Registry subject, consumer, refund behavior, or Member transition) |
 | Workout | `workout.logged` |
 | Trainer booking | `booking.requested`, `booking.accepted`, `booking.rejected`, `booking.completed`, `booking.cancelled`, `booking.expired`, `booking.auto-rejected` |
 | Promotion | `promotion.published` |

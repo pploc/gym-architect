@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G0–G10 are complete. Check-in locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance are recorded in [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). Historical G0–G9 evidence remains unchanged. See [Phase 10](../plans/foundation-first/10-ms-gym-checkin.md).
+> **Roadmap status:** G0–G10 are complete. G11 Payment implementation is in progress under a locked gate; historical G0–G10 evidence remains unchanged. See [Phase 11](../plans/foundation-first/11-payment-contracts.md).
 
 ## System Context
 
@@ -18,14 +18,14 @@ Selecting a gym is frontend URL/request state. It does not issue another token a
 
 ## Active Roadmap Scope and Service Catalog
 
-Identifier, Member, Plans, and Check-in are implemented active scope. Other entries remain future boundaries.
+Identifier, Member, Plans, and Check-in are implemented active scope. Payment is active implementation work through G11's membership-only locked gate; other entries remain future boundaries.
 
 | # | Service | Technology | Database | Ownership | Status |
 |---|---|---|---|---|---|
 | 1 | Identifier | Go + PostgreSQL | `identity_db` | Users, credentials, refresh tokens, stable identity JWTs | Active |
 | 2 | Member | Java 26 + Spring Boot 4 | `member_db` | Profiles, subscriptions, purchase orchestration, lifecycle, validation, membership events | Active |
 | 3 | Plans | Java 26 + Spring Boot 4 | `plans_db` | Gym locations, gym-specific plans, availability, duration, VND list price | Active |
-| 4 | Payment | Java + PostgreSQL | `payment_db` | Payments, provider webhooks, refunds | Deferred; G8 uses a fake fixture only |
+| 4 | Payment | Java 26 + Spring Boot 4 | `payment_db` | Membership intents, SePay webhook, completion outbox | G11 implementation in progress; G8 fake remains current producer until locked pass |
 | 5 | Workout | Go + Cassandra | `workout_ks` | Workout logs, templates, personal records | Deferred |
 | 6 | Trainer | Java + PostgreSQL | `trainer_db` | Trainer profiles, availability, bookings | Deferred |
 | 7 | Check-in | Go gRPC + YugabyteDB | `checkin_db` | AWS KMS-protected QR keys, logged-in iPad display payloads, scan validation, check-in records/event | G10 complete |
@@ -33,7 +33,7 @@ Identifier, Member, Plans, and Check-in are implemented active scope. Other entr
 | 9 | Analytics | Java + YugabyteDB | `analytics_db` | Attendance, revenue, and trend projections | Deferred |
 | 10 | Promotion | Java + PostgreSQL | `promotion_db` | Promotion codes and reservations | Deferred |
 
-## G9 Baseline and Planned G10 Topology
+## G10 Baseline and In-Progress G11 Topology
 
 ```mermaid
 flowchart LR
@@ -48,9 +48,14 @@ flowchart LR
     MB -->|mTLS: ResolvePurchasablePlan| PL
     CI -.->|G10: ValidateMembership user + signed gym| MB
     CI -.->|G10: ValidateCheckInGym| PL
-    MB -->|G8 fixture only| FP[Fake Payment]
+    MB -->|mTLS InitiatePayment| PM[Payment]
+    SP[SePay] -->|HTTPS HMAC webhook| PM
+    MB -.->|historical G8 fixture| FP[Fake Payment]
 
     ID --> IDDB[(identity_db)]
+    PM -.-> PMDB[(payment_db)]
+    PM -.->|G11 locked pass only: payment.completed.v1| Kafka
+    FP -->|current producer until locked pass| Kafka
     MB --> MBDB[(member_db)]
     PL --> PLDB[(plans_db)]
     CI -.-> CIDB[(checkin_db)]
@@ -63,7 +68,7 @@ flowchart LR
 
 There is no Identifier-to-Member customer-flow call. Plans `8080` remains available only for Actuator, probes, and metrics after Kong cutover; Plans business traffic uses `50051`.
 
-Plans V1 has no Kafka producer, consumer, topic, outbox, cache, scheduler, Schema Registry dependency, or Payment integration. G8 fake Payment exists only to prove purchase correlation and event replay.
+Plans V1 has no Kafka producer, consumer, topic, outbox, cache, scheduler, Schema Registry dependency, or Payment integration. G8 fake Payment remains current producer to preserve historical purchase-correlation/replay proof; the real Payment producer is enabled only by the locked G11 pass.
 
 ## Ownership and Database Isolation
 
@@ -85,6 +90,11 @@ member_db
 plans_db
   gym_locations
   membership_plans
+
+payment_db
+  payment_intents
+  payment_webhook_receipts
+  outbox_events
 ```
 
 Only Plans may enforce a local foreign key from `membership_plans.gym_id` to `gym_locations.id`. Member stores opaque `user_id`, `gym_id`, and `plan_id` values plus frozen purchased terms.
@@ -140,7 +150,8 @@ Never infer admin gym scope from UI state, request paths, or obsolete selected-g
 | Identifier public HTTP/JSON | Client to Kong to Identifier HTTP gateway on `8080` |
 | Member and Plans public HTTP/JSON | Client to Kong, then mTLS generated gateway `8443`, then service mTLS gRPC `50051` |
 | Native workload gRPC | Exact caller SAN to exact method on `50051` |
-| Kafka | G9: Identifier/Member topics; G10 Stage 2 is implementing Check-in transactional outbox; release/integration remains pending |
+| Kafka | Identifier/Member baseline plus G10 Check-in outbox; G8 fake remains `payment.completed.v1` producer until the G11 locked pass proves Payment outbox publication |
+| Payment | Member-only mTLS `InitiatePayment`; SePay HTTPS native webhook only; no public Payment route/OpenAPI |
 | Check-in display | G10: logged-in `SUPER_ADMIN` iPad app to Kong to generated gateway to Check-in |
 
 Public Member and Plans metadata is trusted only when the peer certificate SAN is `ms-gym-api-gateway`. Kong strips forged trusted headers and injects verified identity/role metadata only; gateway accepts that metadata only from Kong SAN, strips arbitrary inbound metadata, and forwards vetted values. Path binding populates explicit `gym_id`; it is not a JWT claim.
@@ -149,6 +160,7 @@ Exact internal allowlist:
 
 - Identifier may call Plans `GetActiveGym` for current trainer validation.
 - Member may call Plans `ResolvePurchasablePlan`.
+- Member may call Payment `InitiatePayment` over mTLS; Payment accepts no other workload caller.
 - G10 Check-in calls Member `ValidateMembership(user_id, signed_gym_id)`, returning canonical `member_id`, validity, and status.
 - G10 Check-in calls Plans' dedicated `ValidateCheckInGym` method for display/key administration; it does not broaden Identifier's `GetActiveGym`.
 - Notification may call Member `ListMembersByStatus` when that deferred service is implemented.
@@ -183,3 +195,4 @@ Browser REST clients generate from released OpenAPI 3.0. Backend and native gRPC
 | Browser contract | Generated OpenAPI 3.0 | Describes HTTP paths, security, schemas, and errors |
 | QR display | Logged-in `SUPER_ADMIN` iPad app | Reuses stable JWT flow; no kiosk/device lifecycle |
 | QR key protection | AWS KMS + Yugabyte base64 KMS ciphertext | KMS encrypts/decrypts 32-byte root keys; Yugabyte stores no plaintext |
+| Payment trust | Member mTLS plus SePay raw-body HMAC | Member is sole gRPC caller; native webhook verifies `sha256={hex}` over `{timestamp}.{raw_body}` within ±5 minutes |

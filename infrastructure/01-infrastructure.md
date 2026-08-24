@@ -1,8 +1,8 @@
 # Infrastructure Architecture
 
-> **Roadmap status:** G0–G10 are complete. Check-in locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance are recorded in [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). Historical G9 lock and evidence remain unchanged.
+> **Roadmap status:** G0–G10 are complete. G11 Payment implementation is in progress under a locked gate; historical G9/G10 locks and evidence remain unchanged.
 
-## G9 baseline and in-progress G10 topology
+## G10 baseline and in-progress G11 topology
 
 ```mermaid
 flowchart TB
@@ -17,9 +17,12 @@ flowchart TB
     MB -->|mTLS 50051: ResolvePurchasablePlan| PL
     CI -.->|G10: ValidateMembership| MB
     CI -.->|G10: ValidateCheckInGym| PL
-    MB -->|fixture protocol| FP[G8 Fake Payment]
+    MB -->|mTLS 50051: InitiatePayment| PM[Payment]
+    SP[SePay] -->|HTTPS raw-body HMAC webhook| PM
+    MB -.->|historical fixture protocol| FP[G8 Fake Payment]
 
     ID --> IDDB[(identity_db)]
+    PM -.-> PMDB[(payment_db)]
     MB --> MBDB[(member_db)]
     PL --> PLDB[(plans_db)]
     CI -.-> CIDB[(checkin_db / YugabyteDB)]
@@ -28,13 +31,14 @@ flowchart TB
     ID --> Kafka[[Kafka]]
     MB --> Kafka
     CI -.->|checkin.recorded.v1| Kafka
-    FP --> Kafka
+    FP -->|current payment.completed.v1 producer| Kafka
+    PM -.->|Payment outbox after locked G11 pass| Kafka
     Kafka --> SR[Schema Registry]
 ```
 
 Kong is only browser endpoint. It validates stable JWTs, removes client-supplied trusted headers, injects verified identity/role metadata, applies CORS, and selects exact routes. Generated gateway accepts trusted metadata only from Kong SAN, strips arbitrary inbound metadata, and performs generated HTTPS/JSON-to-gRPC binding.
 
-Kong cannot directly reach Member or Plans `50051`. Gateway cannot call workload-only RPCs. There is no Identifier-to-Member runtime edge. Fake Payment remains test infrastructure, not production Payment.
+Kong cannot directly reach Member, Plans, or Payment `50051`. Gateway cannot call workload-only RPCs. There is no Identifier-to-Member runtime edge. Payment accepts `InitiatePayment` only from Member mTLS; the SePay webhook is HTTPS native ingress, not a Kong/browser route. Fake Payment remains current historical fixture producer until the locked G11 pass.
 
 ## Database isolation
 
@@ -44,8 +48,9 @@ Kong cannot directly reach Member or Plans `50051`. Gateway cannot call workload
 | `member_db` | Member | members, subscriptions, pending purchases, outbox, processed events |
 | `plans_db` | Plans | gym locations, membership plans |
 | `checkin_db` | Check-in, G10 complete | base64 KMS ciphertext in `key_ciphertext`, resolved CMK ARN in `key_reference`, check-ins, transactional outbox |
+| `payment_db` | Payment, G11 in progress | payment intents, unique SePay webhook receipts, transactional outbox |
 
-Only Plans owns catalog tables. Member stores opaque IDs and frozen purchased terms. Check-in stores opaque `user_id`, canonical `member_id`, and `gym_id` plus Check-in-owned state. Identifier stores no gym assignment. No cross-service DB FK or join is allowed. G10 adds no display-device table.
+Only Plans owns catalog tables. Member stores opaque IDs and frozen purchased terms. Check-in stores opaque `user_id`, canonical `member_id`, and `gym_id` plus Check-in-owned state. Payment stores opaque Member references plus Payment-owned intent/receipt/outbox state. Identifier stores no gym assignment. No cross-service DB FK or join is allowed. G10 adds no display-device table.
 
 ## Kong routes
 
@@ -102,6 +107,7 @@ Generated gateway accepts metadata only if Kong's client certificate SAN is vali
 |---|---|---|---|
 | `ms-gym-identifier` | Plans | `GetActiveGym` | No |
 | `ms-gym-member` | Plans | `ResolvePurchasablePlan` | No |
+| `ms-gym-member` | Payment | `InitiatePayment` | No; G11 in progress |
 | `ms-gym-checkin` | Member | `ValidateMembership(user_id, gym_id)` | No; G10 complete |
 | `ms-gym-checkin` | Plans | dedicated `ValidateCheckInGym`-style method | No; G10 complete |
 | `ms-gym-notification` | Member | `ListMembersByStatus` | No; deferred caller |
@@ -117,7 +123,8 @@ Policies must separate peers by destination port. Do not union callers into broa
 - Kong reaches generated gateway `8443` only.
 - Generated gateway reaches Member and Plans `50051` only.
 - Kong has no direct Member or Plans `50051` rule.
-- Identifier and Member retain only exact Plans workload paths at `50051`.
+- Identifier retains only its exact Plans workload path; Member reaches only exact Plans and Payment workload methods at `50051`.
+- Payment `50051` admits only Member; no generated-gateway or Kong rule exists. Its webhook ingress is HTTPS-only and must enforce raw-body HMAC, timestamp, and deployment-managed SePay IP allowlist where available.
 - Check-in reaches only its exact Member and Plans workload methods at `50051`.
 - Generated gateway reaches Check-in public methods at `50051`; Kong has no direct Check-in rule.
 - Check-in reaches Yugabyte YSQL, AWS KMS API, Kafka, Schema Registry lookup, DNS, and configured observability endpoints only.
@@ -143,6 +150,14 @@ Member:
   PLANS_GRPC_CA
   PLANS_GRPC_CERT
   PLANS_GRPC_KEY
+  PAYMENT_GRPC_TARGET / DEADLINE / CA / CERT / KEY
+
+Payment (G11 in progress):
+  PAYMENT_DB_DSN through secret mount
+  SEPAY_WEBHOOK_SECRET through secret mount
+  SEPAY_RECEIVING_ACCOUNT / SEPAY_BANK_CODE / SEPAY_CODE_PREFIX
+  KAFKA_BROKERS / SCHEMA_REGISTRY_URL and protected credentials
+  MEMBER_GRPC_CA (for Member mTLS client identity validation)
 
 Check-in (G10 complete):
   MEMBER_GRPC_TARGET / DEADLINE / CA / CERT / KEY
@@ -201,7 +216,20 @@ Protected authenticated G9 CI uses package/repository read credentials and Build
 
 Commit only schema-controlled sanitized final evidence. It records SHAs, versions, checksums, certificate public metadata, command labels, exit codes, and CI/release URLs. It must reject private keys, JWTs, authorization values, PII, fixture IDs, raw logs, and raw exception/transport details.
 
-## In-progress G10 Check-in infrastructure
+## In-progress G11 Payment infrastructure
+
+Use the existing Java service and Helm patterns; do not add a SePay SDK or a public Payment gateway:
+
+- Payment gRPC `50051` admits only `ms-gym-member` mTLS; `8080` exposes actuator health/readiness only;
+- PostgreSQL `payment_db` has least-privilege credentials and an explicit migration job/path;
+- native `POST /api/v1/payments/webhook/sepay` is HTTPS ingress only, verifies documented raw-body HMAC/timestamp, and uses SePay IP allowlisting where the ingress can enforce it;
+- webhook secret, receiving account, bank code, and payment-code prefix are secret-mounted/configured outside source control;
+- Payment accesses Kafka and Schema Registry lookup only; outbox emits existing `payment.completed.v1` after the locked G11 cutover;
+- Helm/NetworkPolicy deny Kong/generated-gateway and all non-Member gRPC peers; no public Payment route/OpenAPI is rendered.
+
+G11 evidence must pin detached source SHAs, released artifact versions, image digests, migration and rendered-manifest checksums, SePay document URL/date/content checksum, and sanitized fixture checksums. Run its protected CI, sanitizer, replay/overpay E2E, and clean-tree checks before cutover. Historical G8 fake-payment evidence remains unchanged.
+
+## Historical G10 Check-in infrastructure
 
 Use existing generic chart plus official/runtime dependencies:
 
@@ -223,6 +251,7 @@ The iPad app uses normal Identifier login and stable JWT through Kong. No HTTP B
 - `ms-gym-member`: Gradle checks and secret-safe image build;
 - `ms-gym-plans`: Gradle checks, Flyway, Specification tests, image and Helm checks;
 - `ms-gym-checkin`: G10 Go race/integration/security checks and secret-safe image build;
-- `gym-infra`: historical G9 lock plus additive G10 lock validation, detached-source materialization, authenticated E2E, sanitizer, and Helm rendering.
+- `ms-gym-payment`: G11 Gradle migration/webhook/outbox/security tests, secret-safe image build, and `startEnv`/`stopEnv` verification;
+- `gym-infra`: historical G9/G10 locks plus additive G11 lock validation, detached-source materialization, authenticated E2E, sanitizer, and Helm rendering.
 
 Java service docs retain `./gradlew startEnv` and `./gradlew stopEnv` for local dependencies.

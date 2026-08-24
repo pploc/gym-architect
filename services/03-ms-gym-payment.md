@@ -1,171 +1,120 @@
 # Payment Service
 
-> **Roadmap:** G11 contracts only. `ms-gym-payment` implementation is deferred; the local tree is absent and `git@github.com:pploc/ms-gym-payment.git` is empty.
-> **G11 provider:** SePay VietQR / bank-transfer webhook, `SEPAY` only. Momo, ZaloPay, and VNPay remain deferred.
-> **Tech target:** Java 26 (Spring Boot 4) | **DB:** PostgreSQL | **Ports target:** 50051 (gRPC) / 8080 (REST)
+> **Roadmap:** G11 implementation in progress. This supersedes the former contracts-only status on 2026-08-24; historical G8 fake-payment evidence remains unchanged. No completion claim before the locked gate passes.
+> **Provider and scope:** SePay VietQR / bank-transfer webhook, `SEPAY` and `MEMBERSHIP` only. Momo, ZaloPay, VNPay, `TRAINER_BOOKING`, refunds, history, discounts, and reports remain deferred.
+> **Target:** Java 26 + Spring Boot 4 | PostgreSQL `payment_db` | gRPC `50051` | actuator health/readiness `8080`
 
 ## Responsibilities
 
-- SePay VietQR payment initiation and webhook completion for `MEMBERSHIP`.
-- Idempotent payment processing keyed by `(payment_type=MEMBERSHIP, reference_id=purchase_id)`.
-- Publish `payment.completed.v1` after verified completion; G8 fake-payment remains the current fixture producer.
-- Expose a native REST provider webhook without JWT.
+- Member-only mTLS `InitiatePayment`, idempotent by `(MEMBERSHIP, purchase_id)`.
+- Generate an opaque official VietQR `payment_url`.
+- Verify and durably process the native SePay webhook.
+- Complete once and relay unchanged `payment.completed.v1` through a transactional outbox.
+- Store actual overpayment while emitting the Member-frozen amount.
 
-Refunds, transaction history, discounts, `TRAINER_BOOKING`, and other providers remain deferred implementation scope. G11 freezes contracts only; it does not implement providers, persistence, an outbox, webhook code, Kong routes, or generated Payment HTTP exposure.
+The G8 fake remains current `payment.completed.v1` producer until the locked G11 pass proves the real service.
 
-## Payment Flow
+## Frozen boundary
+
+| Concern | Rule |
+|---|---|
+| Amount | Member freezes `amount_vnd`; Payment does not call Plans or reprice. `transferAmount >= amount_vnd` completes; overpay actual is retained, event amount stays frozen. |
+| Payment code | Exact configured code maps an inbound transfer to one intent. Prefix is 2–5 uppercase characters; suffix is 1–30 numeric/alphanumeric characters. |
+| Event | Existing `PaymentCompletedEvent`, key `user_id`, `payment.completed.v1` subject/framing/headers only. No new proto. |
+| Duplicate | Same SePay `id` or valid replay returns success without another completion/event. |
+| Exposure | No public Payment RPC, inline HTTP annotation, OpenAPI, or Kong route. Native webhook only: `POST /api/v1/payments/webhook/sepay`, HTTPS, no JWT. |
+| Future names | `payment.failed.v1` and `payment.refunded.v1` are names only. |
+
+## Official SePay webhook pin
+
+Official sources accessed 2026-08-24:
+
+- [Authentication](https://developer.sepay.vn/vi/sepay-webhooks/xac-thuc)
+- [Webhook payload and response](https://developer.sepay.vn/vi/sepay-webhooks/tich-hop-webhook)
+- [Retry](https://developer.sepay.vn/vi/sepay-webhooks/xu-ly-loi)
+- [Payment code](https://developer.sepay.vn/vi/sepay-webhooks/cau-hinh-ma-thanh-toan)
+- [VietQR image/form](https://developer.sepay.vn/vi/sepay-webhooks/tao-qr-va-form-thanh-toan)
+
+Use recommended HMAC, not an API-key substitute:
+
+```text
+X-SePay-Signature: sha256={hex_hash}
+X-SePay-Timestamp: Unix seconds
+HMAC-SHA256 secret input: {timestamp}.{raw_body}
+reject timestamp: outside ±5 minutes
+```
+
+Preserve raw bytes until HMAC verification completes and compare in constant time. HTTPS is mandatory; use a SePay IP allowlist where infrastructure supports it. Do not log secret/signature/full callback/account/payment content.
+
+| Field | Handling |
+|---|---|
+| `id` | Stable integer, unique across retry/replay; receipt uniqueness key. |
+| `gateway` | Provider metadata. |
+| `transactionDate` | `YYYY-MM-DD HH:mm:ss` in Vietnam time. |
+| `accountNumber`, `subAccount` | Verify configured receiving account where applicable; protect. |
+| `code` | Nullable; exact intent-code match required. |
+| `content`, `description`, `referenceCode` | Protected reconciliation metadata only as needed. |
+| `transferType` | Only `in` may complete. |
+| `transferAmount` | Positive integer VND; underpay does not complete; retain actual overpay. |
+| `accumulated` | Never completion authority. |
+
+Valid completion, duplicate, or authenticated persisted orphan responds within 30 seconds with HTTP 200 or 201 and exact `{"success":true}`. Invalid signature, malformed timestamp/body, and stale timestamps return safe non-2xx. SePay retries connection errors/non-2xx with initial plus seven Fibonacci retries: 1, 1, 2, 3, 5, 8, 13 minutes, about 33 minutes.
+
+The payment URL is opaque and generated from URL-encoded required parameters:
+
+```text
+https://vietqr.app/img?acc={account}&bank={bank}&amount={amount}&des={payment_code}
+```
+
+## Flow
 
 ```mermaid
 sequenceDiagram
-    participant C as Mobile App
-    participant K as Kong
-    participant MS as Member Service
-    participant PS as Payment Service
-    participant PP as SePay VietQR
+    participant MB as Member
+    participant PM as Payment
+    participant DB as payment_db
+    participant SP as SePay
     participant KF as Kafka
 
-    C->>K: Member-owned purchase route with provider: "SEPAY"
-    K->>MS: gRPC PurchaseMembership
-    MS->>PS: gRPC InitiatePayment(reference_id=purchase_id, amount_vnd)
-    PS->>PS: Create or reuse PENDING intent by (MEMBERSHIP, purchase_id)
-    PS->>PP: Create SePay VietQR payment session
-    PP-->>PS: payment_url and provider_code
-    PS-->>MS: payment_id and payment_url
-    MS-->>C: payment_id and payment_url
-    C->>PP: Complete bank transfer
-    PP->>PS: POST /api/v1/payments/webhook/sepay
-    PS->>PS: Verify raw-body signature, timestamp, direction, and amount
-    PS->>PS: Complete once; duplicate callback is idempotent
-    PS->>KF: Publish payment.completed.v1
-    KF-->>MS: Activate membership from frozen terms
+    MB->>PM: mTLS InitiatePayment(purchase_id, frozen amount)
+    PM->>DB: Create/reuse PENDING intent and exact code
+    PM-->>MB: payment_id, opaque VietQR payment_url
+    SP->>PM: HTTPS webhook, raw body + HMAC headers
+    PM->>PM: Verify HMAC/timestamp before parsing
+    PM->>DB: Record receipt; match inbound exact code; complete once + outbox
+    PM-->>SP: 200/201 {"success":true}
+    PM->>KF: payment.completed.v1, frozen amount
+    KF-->>MB: Existing completion consumer activates frozen terms
 ```
 
-## Domain Contract
-
-- Status: `PENDING`, `COMPLETED`, `FAILED`, `REFUNDED`.
-- G11 producer type: `MEMBERSHIP`. `TRAINER_BOOKING` remains schema-present but inactive.
-- Provider: `SEPAY` only.
-- Currency: VND; `amount_vnd` is a non-negative `int64`.
-- Cross-service IDs are opaque strings; no cross-service database foreign keys.
-- Payment uses Member's frozen amount and never re-prices or re-resolves a plan during completion.
-
-## Idempotency
-
-Member always sends `reference_id = purchase_id`.
+## Service target
 
 ```text
-key = (payment_type=MEMBERSHIP, reference_id=purchase_id)
-
-PENDING or COMPLETED -> return the same payment_id and payment_url
-FAILED -> retry requires a new Member purchase_id
-missing -> create one PENDING intent
+ms-gym-payment/
+├── src/main/java/com/gym/payment/
+│   ├── domain/
+│   ├── application/
+│   ├── adapter/in/{grpc,http}/
+│   ├── adapter/out/{persistence,kafka}/
+│   └── config/
+├── src/main/resources/db/migration/
+├── src/test/
+├── docker-compose.yml
+├── Dockerfile
+├── build.gradle
+├── gradlew
+└── README.md
 ```
 
-Payment must never mint a second charge for one membership `purchase_id`.
+`payment_intents` owns opaque Member refs, provider/type, frozen/actual amounts, code, URL, state, and unique membership reference. `payment_webhook_receipts` uniquely owns SePay `id` and verification/processing state. `outbox_events` is committed in the same completion transaction. Database constraints plus transaction boundaries enforce idempotency.
 
-## SePay VietQR Contract
+The repository must supply `./gradlew startEnv` and `./gradlew stopEnv` for local dependencies.
 
-G11 freezes the provider boundary, not the provider SDK or network implementation. Clients use the existing opaque `payment_url`; raw QR fields are not added in G11.
+## G11 proof required
 
-```text
-Create: SePay VietQR payment session
-Return: payment_url and provider order/code reference
-Webhook: POST /api/v1/payments/webhook/sepay
-Headers: X-SEPAY-SIGNATURE, X-SEPAY-TIMESTAMP
-Body: raw JSON; code, transferType, transferAmount, content, referenceCode
-Verify: HMAC-SHA256 over vendor-defined raw-body signing input
-Reject: invalid signature, invalid JSON, stale timestamp (> 5 minutes), transferType != in,
-        or transfer amount below the frozen amount
-Success: HTTP 200 {"success": true}; valid duplicates also return success
-```
+- given/when/then tests for intent reuse, Member-only mTLS, encoded QR URL, raw HMAC/timestamp boundaries, exact code/direction/account, duplicate `id`, underpay, overpay, orphan, and safe errors;
+- PostgreSQL migration, outbox relay/DLQ, unchanged Kafka framing/headers, Member one-time activation, health, HTTPS ingress, mTLS SAN, NetworkPolicy, and no-public-Payment-route negatives;
+- least-privilege `payment_db`, secret-mounted `SEPAY_WEBHOOK_SECRET` and account/bank/code settings, Kafka/Registry credentials, and optional deployment-managed SePay IP allowlist;
+- detached source/image/config lock, protected CI, sanitized evidence, clean trees, and owner acceptance.
 
-A verified callback maps the provider code/order reference to one Payment intent, transitions it once to `COMPLETED`, and publishes `payment.completed.v1` with `provider=SEPAY`. Exact field mapping and the vendor signing formula require confirmation during implementation.
-
-Momo, ZaloPay, and VNPay are deferred providers; their endpoints are not part of G11.
-
-## Kafka Events
-
-### Published
-
-| Topic | Key | G11 status | Payload |
-|---|---|---|---|
-| `payment.completed.v1` | `user_id` | Frozen active; G8 fixture remains the current producer | `{payment_id, user_id, type, reference_id, amount_vnd, gym_id, provider}` |
-| `payment.failed.v1` | `user_id` | Name freeze only; no producer, Registry subject, or Member consumer | Future contract |
-| `payment.refunded.v1` | `user_id` | Name freeze only; no producer, Registry subject, or Member consumer | Future contract |
-
-The historical unversioned names `payment.failed` and `payment.refunded` are superseded by the `.v1` names. `{topic}.DLQ` behavior remains owned by common libraries.
-
-### Consumed later
-
-| Topic | G11 status |
-|---|---|
-| `membership.paused.v1` | Refund behavior deferred |
-| `booking.cancelled` | Trainer refund behavior deferred |
-| `booking.auto-rejected` | Trainer refund behavior deferred |
-| `trainer.suspended` | Trainer refund behavior deferred |
-
-## API Contract
-
-| RPC | Caller | HTTP in G11 | Policy |
-|---|---|---|---|
-| `InitiatePayment` | Member workload over mTLS | None | Active dependency; create or reuse an intent; return `payment_id` and `payment_url`. |
-| `GetPaymentStatus` | Deferred public client | Deferred | No active route. |
-| `GetSpendingHistory` | Deferred public client | Deferred | No active route. |
-| `RefundPayment` | Deferred admin | None | Later implementation phase. |
-| `GetRevenueReport` | Deferred admin | None | Later implementation phase. |
-| `GetPaymentsByUser` | Deferred internal caller | None | Later implementation phase. |
-
-Payment public methods remain in deferred `payment_http.yaml`; G11 does not promote them into inline `google.api.http`, generated OpenAPI, or Kong routes.
-
-## Native Webhook Boundary
-
-The SePay webhook is a plain Spring MVC REST controller, not a gRPC method. It must preserve raw request bytes for signature verification and has no JWT.
-
-```java
-@RestController
-@RequestMapping("/api/v1/payments/webhook")
-public class WebhookController {
-    @PostMapping("/sepay")
-    public ResponseEntity<Map<String, Object>> sepayCallback(
-            HttpServletRequest request) throws IOException {
-        byte[] rawBody = request.getInputStream().readAllBytes();
-        // Verify X-SEPAY-SIGNATURE against rawBody before parsing JSON.
-        // ...
-        return ResponseEntity.ok(Map.of("success", true));
-    }
-}
-```
-
-Valid duplicate callbacks return HTTP 200 without a second completion event. Orphan persistence, alerting, and retry handling remain implementation-phase work.
-
-## Errors
-
-Use canonical gRPC statuses and stable `x-error-code` values through `common-java`:
-
-| Condition | Status | Error code |
-|---|---|---|
-| Invalid field, amount, provider, or type | `INVALID_ARGUMENT` | `INVALID_ARGUMENT` |
-| Missing payment reference | `NOT_FOUND` | `PAYMENT_NOT_FOUND` |
-| Duplicate completed provider mismatch | `FAILED_PRECONDITION` | `PAYMENT_STATE_INVALID` |
-| Missing workload authentication | `UNAUTHENTICATED` | `UNAUTHENTICATED` |
-| Workload role denial | `PERMISSION_DENIED` | `FORBIDDEN` |
-| Provider, Kafka, or Registry unavailable | `UNAVAILABLE` | `PAYMENT_UNAVAILABLE` |
-
-Webhook authentication failures use HTTP `400` or `401`, not gRPC errors. Do not leak provider internal exception text.
-
-## G11 Boundary
-
-G11 includes documentation contract matrices only. It does not include:
-
-- cloning or scaffolding `ms-gym-payment`;
-- SePay SDK network calls;
-- Payment Kong routes, generated OpenAPI, or active `google.api.http` annotations;
-- failed/refunded producers, Registry subjects, or Member consumers;
-- Promotion reservations, refunds, trainer payments, or raw QR fields;
-- replacement of the G8 fake-payment fixture.
-
-## Implementation-Phase Notes
-
-The later implementation phase clones the empty remote, builds the Spring service/PostgreSQL schema and outbox, implements the SePay client and webhook controller, enforces Member-only mTLS SAN policy, replaces the fake fixture, and then opens gateway exposure and deferred event families.
-
-Open risks: exact SePay `code` to Payment order mapping, exact HMAC string-to-sign, and whether clients eventually need raw VietQR content beyond `payment_url`.
+Until this proof exists, Payment is implementation in progress and the G8 fake remains current producer.
