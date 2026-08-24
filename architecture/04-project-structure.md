@@ -1,6 +1,6 @@
 # Project Repository Structure
 
-> **Roadmap status:** Sibling-repository workspace. G0–G10 are complete. G11 is creating `ms-gym-payment`; its locked gate remains in progress. The Check-in completion evidence remains unchanged.
+> **Roadmap status:** Sibling-repository workspace. G0–G10 are complete. G11 `ms-gym-payment` is complete with locked evidence. The Check-in completion evidence remains unchanged.
 
 ## Workspace Model
 
@@ -17,10 +17,10 @@ gapi/
 ├── ms-gym-member/        # Java membership service
 ├── ms-gym-plans/         # Java catalog service
 ├── ms-gym-checkin/       # G10 Go Check-in service; complete
-└── ms-gym-payment/       # G11 Java Payment service; implementation in progress
+└── ms-gym-payment/       # G11 Java Payment service; complete
 ```
 
-Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Payment is active only for the membership-only G11 locked gate; Check-in G10 is complete.
+Workout, Trainer, Notification, Analytics, and Promotion remain catalog entries. Payment is complete for the membership-only G11 scope; Check-in G10 is complete.
 
 ## Contract Repository
 
@@ -131,7 +131,7 @@ ms-gym-plans/
 
 After G9, Plans has no Spring MVC business adapter. Spring web remains only as needed for Actuator on `8080`; business gRPC uses `50051`. Filtering uses composed JPA `Specification` objects.
 
-### `ms-gym-payment` — G11 implementation in progress
+### `ms-gym-payment` — G11 complete
 
 ```text
 ms-gym-payment/
@@ -150,7 +150,7 @@ ms-gym-payment/
 └── README.md
 ```
 
-Payment owns `payment_intents`, `payment_webhook_receipts`, and its transactional outbox in `payment_db`. It exposes `InitiatePayment` only to Member mTLS and `POST /api/v1/payments/webhook/sepay` only as HTTPS native provider ingress. No public Payment RPC/Kong/OpenAPI route exists. G8 fake-payment remains current producer until locked G11 proof succeeds.
+Payment owns `payment_intents`, `payment_webhook_receipts`, and its transactional outbox in `payment_db`. It exposes `InitiatePayment` only to Member mTLS and `POST /api/v1/payments/webhook/sepay` only as HTTPS native provider ingress. No public Payment RPC/Kong/OpenAPI route exists. Payment transactional outbox is the active producer; G8 fake-payment remains a historical compatibility fixture.
 
 ### `ms-gym-checkin` — G10 complete
 
@@ -195,8 +195,8 @@ gym-infra/
 │   ├── g9-business-check.sh
 │   ├── run-g9.sh
 │   ├── g10-*                       # Historical Check-in lock/fixture/runner
-│   ├── g11-*                       # In-progress Payment lock/fixture/runner
-│   └── fixtures/fake-payment/       # Historical/current producer until G11 locks
+│   ├── g11-*                       # Completed Payment lock/fixture/runner
+│   └── fixtures/fake-payment/       # Historical compatibility fixture
 ├── helm/gym-service/
 └── .github/workflows/
 ```

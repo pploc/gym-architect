@@ -20,7 +20,7 @@ contract freeze
   -> implement ms-gym-payment and locked SePay gate
 ```
 
-Identifier, Member, Plans, Check-in, and Payment are active scope. G10 Check-in is technically complete with locked clean-source E2E, protected CI, sanitized evidence, and recorded owner acceptance; see [`g10-final`](../../evidence/foundation-first/g10-final/README.md). G11 is implementing `ms-gym-payment`; its locked gate remains incomplete.
+Identifier, Member, Plans, Check-in, and Payment are active scope. G10 Check-in is technically complete with locked clean-source E2E, protected CI, sanitized evidence, and recorded owner acceptance; see [`g10-final`](../../evidence/foundation-first/g10-final/README.md). G11 Payment is complete with locked image evidence, protected CI, sanitized E2E evidence, and recorded user-directed accountable owner acceptance; see [Phase 11](11-payment-contracts.md).
 
 ## Current status
 
@@ -31,7 +31,7 @@ Identifier, Member, Plans, Check-in, and Payment are active scope. G10 Check-in 
 - G8: passed on prior contract generation; evidence under `docs/evidence/foundation-first/g8/local-2026-08-09/`. Owner approval remains pending.
 - G9: passed on 2026-08-15. Kong fronts generated Go `grpc-gateway` for Member and Plans HTTPS/JSON; gateway reaches their mTLS gRPC `50051` endpoints. Kong 3.8 source-Protobuf parsing remains historical rejected behavior. Plans `8080` remains Actuator-only. Immutable v6.0.1 artifacts, locked clean-source G9, protected CI, sanitized evidence, and recorded clean product trees passed; see [`p9-final`](../../evidence/foundation-first/p9-final/README.md).
 - G10: passed on 2026-08-23. Check-in uses user-based live membership validation, a logged-in `SUPER_ADMIN` iPad QR display, Plans-owned active-gym validation, AWS KMS-protected 32-byte QR root keys, YugabyteDB records/outbox, `checkin.recorded.v1`, and generated-gateway/Kong exposure. Immutable v7.0.2 artifacts, locked clean-source G10, protected CI, sanitized evidence, develop required check `G10 locked fixture gate`, and recorded owner acceptance passed; see [`g10-final`](../../evidence/foundation-first/g10-final/README.md).
-- G11: **in progress.** [Implement `ms-gym-payment` and locked gate](11-payment-contracts.md) retains the SePay-first contract and builds the membership-only service, webhook, outbox, infrastructure, and locked proof. G8 fake-payment remains current producer until that pass succeeds.
+- G11: **complete on 2026-08-24.** [Implement `ms-gym-payment` and locked gate](11-payment-contracts.md) delivered the membership-only SePay service, webhook, outbox, infrastructure, and locked proof. Real Payment now produces `payment.completed.v1`; G8 fake-payment remains a historical compatibility fixture.
 - **Current artifacts:** `gym-proto` v7.0.2, `gym-proto-java` 7.0.2, `proto-go` v1.7.1, `common-java` 3.0.0, and `common-go` v0.5.0. G11 has a zero-wire delta and no new artifact release.
 
 G5 evidence validates the Member boundary that existed during Phase 5. Phase 8 revised that boundary; G8 evidence supersedes G5 for location validation and catalog ownership. Member has no native public HTTP adapter; Phase 9 exposes its public gRPC methods as HTTPS/JSON through Kong.
@@ -113,7 +113,7 @@ Every plan belongs to one gym; one gym can have many plans. V1 pricing is non-ne
 
 G8 closed Identifier/Member/Plans business ownership. G9 added their generated public gateway and transport boundary. Phase 10 opened Check-in plus its exact dependency changes in `gym-proto`, `common-go`, Member, Plans, generated gateway, Kong, and shared infrastructure. G10 did not reopen Identifier ownership or authorize copied Member/Plans state.
 
-**Supersession note — 2026-08-24:** G11 no longer ends at contracts. It actively implements the membership-only SePay Payment service under the locked gate while retaining the frozen `InitiatePayment` and `payment.completed.v1` boundary. G8 fake-payment remains current producer until the locked pass. No public Payment RPC/Kong route, new proto, failed/refunded behavior, or work for Workout, Trainer, Promotion, Notification, or Analytics is authorized.
+**Completion note — 2026-08-24:** G11 completed the membership-only SePay Payment service under the frozen `InitiatePayment` and `payment.completed.v1` boundary. The real Payment transactional outbox is active; G8 fake-payment remains preserved for historical compatibility. No public Payment RPC/Kong route, new proto, failed/refunded behavior, or work for Workout, Trainer, Promotion, Notification, or Analytics is authorized.
 
 Allowed repositories for Phases 6–8 (historical scope list):
 

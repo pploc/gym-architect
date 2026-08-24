@@ -16,7 +16,7 @@
 
 Member does not own gym locations, plan catalog data, plan availability, duration definitions, or VND list price. [Plans](10-ms-gym-plans.md) owns those records. Member stores only opaque `gym_id` and `plan_id` references.
 
-G11 Payment implementation is in progress. G8 fake-payment remains the current producer for historical purchase-correlation, completion-validation, and replay proof until the locked G11 pass switches to the real Payment outbox.
+G11 Payment is complete. Payment transactional outbox is the active producer; G8 fake-payment remains preserved for historical purchase-correlation, completion-validation, and replay evidence.
 
 ## State Machine
 
@@ -41,7 +41,7 @@ sequenceDiagram
     participant MB as Member
     participant PL as Plans
     participant DB as member_db
-    participant FP as G8 Fake Payment
+    participant PM as Payment
     participant KF as Kafka
 
     C->>MB: POST /api/v1/gyms/{gym_id}/memberships/purchase
@@ -51,11 +51,11 @@ sequenceDiagram
     PL-->>MB: plan_id, gym_id, type, duration_days, price_vnd
     MB->>DB: Create or load PENDING purchase by (user_id, idempotency_key)
     Note over MB,DB: Commit before Payment; stable purchase_id
-    MB->>FP: InitiatePayment(reference_id=purchase_id)
-    FP-->>MB: payment_id, payment_url (same intent on retry)
+    MB->>PM: InitiatePayment(reference_id=purchase_id) over mTLS
+    PM-->>MB: payment_id, payment_url (same intent on retry)
     MB->>DB: Attach payment_id
     MB-->>C: payment_id, payment_url
-    FP->>KF: payment.completed.v1 reference_id=purchase_id
+    PM->>KF: payment.completed.v1 reference_id=purchase_id
     KF-->>MB: Completion event
     MB->>DB: Claim event + activate in one TX
     MB->>DB: Activate from frozen terms; mark completed

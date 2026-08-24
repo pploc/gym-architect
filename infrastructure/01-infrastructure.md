@@ -1,8 +1,8 @@
 # Infrastructure Architecture
 
-> **Roadmap status:** G0–G10 are complete. G11 Payment implementation is in progress under a locked gate; historical G9/G10 locks and evidence remain unchanged.
+> **Roadmap status:** G0–G10 are complete. G11 Payment is complete with locked evidence and user-directed accountable owner acceptance; historical G9/G10 locks and evidence remain unchanged.
 
-## G10 baseline and in-progress G11 topology
+## G10 baseline and G11 Payment topology
 
 ```mermaid
 flowchart TB
@@ -31,14 +31,14 @@ flowchart TB
     ID --> Kafka[[Kafka]]
     MB --> Kafka
     CI -.->|checkin.recorded.v1| Kafka
-    FP -->|current payment.completed.v1 producer| Kafka
-    PM -.->|Payment outbox after locked G11 pass| Kafka
+    FP -.->|historical compatibility fixture| Kafka
+    PM -->|payment.completed.v1| Kafka
     Kafka --> SR[Schema Registry]
 ```
 
 Kong is only browser endpoint. It validates stable JWTs, removes client-supplied trusted headers, injects verified identity/role metadata, applies CORS, and selects exact routes. Generated gateway accepts trusted metadata only from Kong SAN, strips arbitrary inbound metadata, and performs generated HTTPS/JSON-to-gRPC binding.
 
-Kong cannot directly reach Member, Plans, or Payment `50051`. Gateway cannot call workload-only RPCs. There is no Identifier-to-Member runtime edge. Payment accepts `InitiatePayment` only from Member mTLS; the SePay webhook is HTTPS native ingress, not a Kong/browser route. Fake Payment remains current historical fixture producer until the locked G11 pass.
+Kong cannot directly reach Member, Plans, or Payment `50051`. Gateway cannot call workload-only RPCs. There is no Identifier-to-Member runtime edge. Payment accepts `InitiatePayment` only from Member mTLS; the SePay webhook is HTTPS native ingress, not a Kong/browser route. Payment transactional outbox is active; Fake Payment remains a historical compatibility fixture.
 
 ## Database isolation
 
@@ -48,7 +48,7 @@ Kong cannot directly reach Member, Plans, or Payment `50051`. Gateway cannot cal
 | `member_db` | Member | members, subscriptions, pending purchases, outbox, processed events |
 | `plans_db` | Plans | gym locations, membership plans |
 | `checkin_db` | Check-in, G10 complete | base64 KMS ciphertext in `key_ciphertext`, resolved CMK ARN in `key_reference`, check-ins, transactional outbox |
-| `payment_db` | Payment, G11 in progress | payment intents, unique SePay webhook receipts, transactional outbox |
+| `payment_db` | Payment, G11 complete | payment intents, unique SePay webhook receipts, transactional outbox |
 
 Only Plans owns catalog tables. Member stores opaque IDs and frozen purchased terms. Check-in stores opaque `user_id`, canonical `member_id`, and `gym_id` plus Check-in-owned state. Payment stores opaque Member references plus Payment-owned intent/receipt/outbox state. Identifier stores no gym assignment. No cross-service DB FK or join is allowed. G10 adds no display-device table.
 
@@ -107,7 +107,7 @@ Generated gateway accepts metadata only if Kong's client certificate SAN is vali
 |---|---|---|---|
 | `ms-gym-identifier` | Plans | `GetActiveGym` | No |
 | `ms-gym-member` | Plans | `ResolvePurchasablePlan` | No |
-| `ms-gym-member` | Payment | `InitiatePayment` | No; G11 in progress |
+| `ms-gym-member` | Payment | `InitiatePayment` | No; G11 complete |
 | `ms-gym-checkin` | Member | `ValidateMembership(user_id, gym_id)` | No; G10 complete |
 | `ms-gym-checkin` | Plans | dedicated `ValidateCheckInGym`-style method | No; G10 complete |
 | `ms-gym-notification` | Member | `ListMembersByStatus` | No; deferred caller |
@@ -152,7 +152,7 @@ Member:
   PLANS_GRPC_KEY
   PAYMENT_GRPC_TARGET / DEADLINE / CA / CERT / KEY
 
-Payment (G11 in progress):
+Payment (G11 complete):
   PAYMENT_DB_DSN through secret mount
   SEPAY_WEBHOOK_SECRET through secret mount
   SEPAY_RECEIVING_ACCOUNT / SEPAY_BANK_CODE / SEPAY_CODE_PREFIX
@@ -216,7 +216,7 @@ Protected authenticated G9 CI uses package/repository read credentials and Build
 
 Commit only schema-controlled sanitized final evidence. It records SHAs, versions, checksums, certificate public metadata, command labels, exit codes, and CI/release URLs. It must reject private keys, JWTs, authorization values, PII, fixture IDs, raw logs, and raw exception/transport details.
 
-## In-progress G11 Payment infrastructure
+## G11 Payment infrastructure
 
 Use the existing Java service and Helm patterns; do not add a SePay SDK or a public Payment gateway:
 
@@ -224,10 +224,10 @@ Use the existing Java service and Helm patterns; do not add a SePay SDK or a pub
 - PostgreSQL `payment_db` has least-privilege credentials and an explicit migration job/path;
 - native `POST /api/v1/payments/webhook/sepay` is HTTPS ingress only, verifies documented raw-body HMAC/timestamp, and uses SePay IP allowlisting where the ingress can enforce it;
 - webhook secret, receiving account, bank code, and payment-code prefix are secret-mounted/configured outside source control;
-- Payment accesses Kafka and Schema Registry lookup only; outbox emits existing `payment.completed.v1` after the locked G11 cutover;
+- Payment accesses Kafka and Schema Registry lookup only; outbox emits existing `payment.completed.v1`;
 - Helm/NetworkPolicy deny Kong/generated-gateway and all non-Member gRPC peers; no public Payment route/OpenAPI is rendered.
 
-G11 evidence must pin detached source SHAs, released artifact versions, image digests, migration and rendered-manifest checksums, SePay document URL/date/content checksum, and sanitized fixture checksums. Run its protected CI, sanitizer, replay/overpay E2E, and clean-tree checks before cutover. Historical G8 fake-payment evidence remains unchanged.
+G11 evidence must pin detached source SHAs, released artifact versions, image digests, migration and rendered-manifest checksums, SePay document URL/date/content checksum, and sanitized fixture checksums. Its protected CI, sanitizer, replay/overpay E2E, and clean-tree checks passed. Historical G8 fake-payment evidence remains unchanged.
 
 ## Historical G10 Check-in infrastructure
 

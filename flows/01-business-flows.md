@@ -1,6 +1,6 @@
 # Business Flows
 
-> **Scope:** G0–G10 evidence remains historical. G11 Payment implementation is in progress for membership-only SePay; G8 fake-payment remains the current producer until locked proof passes. Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
+> **Scope:** G0–G10 evidence remains historical. G11 Payment is complete for membership-only SePay; Payment transactional outbox is active and G8 fake-payment remains a historical compatibility fixture. Workout, Trainer, Notification, Analytics, and Promotion remain deferred.
 
 ## 1. Stable Identity Authentication
 
@@ -37,9 +37,9 @@ sequenceDiagram
     participant PL as Plans
     participant MB as Member
     participant DB as member_db
-    participant PM as Payment<br/>(G11 locked pass)
+    participant PM as Payment<br/>(G11 complete)
     participant SP as SePay
-    participant FP as G8 Fake Payment<br/>(current producer)
+    participant FP as G8 Fake Payment<br/>(historical fixture)
     participant KF as Kafka
 
     rect rgb(230,245,255)
@@ -73,7 +73,7 @@ sequenceDiagram
         PM-->>MB: payment_id, opaque VietQR payment_url
         MB->>DB: Attach payment_id
         MB-->>APP: payment_id, payment_url
-        Note over FP,PM: FP remains current until the G11 locked pass cuts over Payment
+        Note over FP,PM: Payment is active; FP remains historical G8 compatibility fixture
     end
 
     rect rgb(230,255,230)
@@ -81,7 +81,7 @@ sequenceDiagram
         PM->>PM: Verify sha256 HMAC(timestamp.raw_body), ±5m, exact code, inbound, amount
         PM->>PM: Record receipt; complete once; store actual overpay
         PM-->>SP: 200/201 {"success":true} within 30s
-        PM->>KF: payment.completed.v1 frozen amount<br/>(G11 locked pass; FP remains current otherwise)
+        PM->>KF: payment.completed.v1 frozen amount
         KF-->>MB: Completion event
         MB->>DB: Claim event + lock purchase in one transaction
         MB->>DB: Activate from frozen terms and mark completed

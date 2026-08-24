@@ -1,6 +1,6 @@
 # Payment Service
 
-> **Roadmap:** G11 implementation in progress. This supersedes the former contracts-only status on 2026-08-24; historical G8 fake-payment evidence remains unchanged. No completion claim before the locked gate passes.
+> **Roadmap:** G11 complete on 2026-08-24. This supersedes the former contracts-only status; historical G8 fake-payment evidence remains unchanged. Locked evidence and user-directed accountable owner acceptance are recorded in [Phase 11](../plans/foundation-first/11-payment-contracts.md).
 > **Provider and scope:** SePay VietQR / bank-transfer webhook, `SEPAY` and `MEMBERSHIP` only. Momo, ZaloPay, VNPay, `TRAINER_BOOKING`, refunds, history, discounts, and reports remain deferred.
 > **Target:** Java 26 + Spring Boot 4 | PostgreSQL `payment_db` | gRPC `50051` | actuator health/readiness `8080`
 
@@ -12,7 +12,7 @@
 - Complete once and relay unchanged `payment.completed.v1` through a transactional outbox.
 - Store actual overpayment while emitting the Member-frozen amount.
 
-The G8 fake remains current `payment.completed.v1` producer until the locked G11 pass proves the real service.
+Payment transactional outbox is the active `payment.completed.v1` producer. The G8 fake remains a historical compatibility fixture.
 
 ## Frozen boundary
 
@@ -110,11 +110,11 @@ ms-gym-payment/
 
 The repository must supply `./gradlew startEnv` and `./gradlew stopEnv` for local dependencies.
 
-## G11 proof required
+## G11 completion evidence
 
 - given/when/then tests for intent reuse, Member-only mTLS, encoded QR URL, raw HMAC/timestamp boundaries, exact code/direction/account, duplicate `id`, underpay, overpay, orphan, and safe errors;
 - PostgreSQL migration, outbox relay/DLQ, unchanged Kafka framing/headers, Member one-time activation, health, HTTPS ingress, mTLS SAN, NetworkPolicy, and no-public-Payment-route negatives;
 - least-privilege `payment_db`, secret-mounted `SEPAY_WEBHOOK_SECRET` and account/bank/code settings, Kafka/Registry credentials, and optional deployment-managed SePay IP allowlist;
 - detached source/image/config lock, protected CI, sanitized evidence, clean trees, and owner acceptance.
 
-Until this proof exists, Payment is implementation in progress and the G8 fake remains current producer.
+This proof passed on 2026-08-24. Payment is complete for the frozen membership-only SePay scope; G8 fake-payment remains a historical compatibility fixture.

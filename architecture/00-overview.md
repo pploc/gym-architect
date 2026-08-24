@@ -1,6 +1,6 @@
 # Gym Chain Management System — Architecture Overview
 
-> **Roadmap status:** G0–G10 are complete. G11 Payment implementation is in progress under a locked gate; historical G0–G10 evidence remains unchanged. See [Phase 11](../plans/foundation-first/11-payment-contracts.md).
+> **Roadmap status:** G0–G10 are complete. G11 Payment is complete with locked evidence and user-directed accountable owner acceptance; historical G0–G10 evidence remains unchanged. See [Phase 11](../plans/foundation-first/11-payment-contracts.md).
 
 ## System Context
 
@@ -18,14 +18,14 @@ Selecting a gym is frontend URL/request state. It does not issue another token a
 
 ## Active Roadmap Scope and Service Catalog
 
-Identifier, Member, Plans, and Check-in are implemented active scope. Payment is active implementation work through G11's membership-only locked gate; other entries remain future boundaries.
+Identifier, Member, Plans, and Check-in are implemented active scope. Payment is complete for the membership-only G11 scope; other entries remain future boundaries.
 
 | # | Service | Technology | Database | Ownership | Status |
 |---|---|---|---|---|---|
 | 1 | Identifier | Go + PostgreSQL | `identity_db` | Users, credentials, refresh tokens, stable identity JWTs | Active |
 | 2 | Member | Java 26 + Spring Boot 4 | `member_db` | Profiles, subscriptions, purchase orchestration, lifecycle, validation, membership events | Active |
 | 3 | Plans | Java 26 + Spring Boot 4 | `plans_db` | Gym locations, gym-specific plans, availability, duration, VND list price | Active |
-| 4 | Payment | Java 26 + Spring Boot 4 | `payment_db` | Membership intents, SePay webhook, completion outbox | G11 implementation in progress; G8 fake remains current producer until locked pass |
+| 4 | Payment | Java 26 + Spring Boot 4 | `payment_db` | Membership intents, SePay webhook, completion outbox | G11 complete; Payment transactional outbox is active and G8 fake remains a historical fixture |
 | 5 | Workout | Go + Cassandra | `workout_ks` | Workout logs, templates, personal records | Deferred |
 | 6 | Trainer | Java + PostgreSQL | `trainer_db` | Trainer profiles, availability, bookings | Deferred |
 | 7 | Check-in | Go gRPC + YugabyteDB | `checkin_db` | AWS KMS-protected QR keys, logged-in iPad display payloads, scan validation, check-in records/event | G10 complete |
@@ -33,7 +33,7 @@ Identifier, Member, Plans, and Check-in are implemented active scope. Payment is
 | 9 | Analytics | Java + YugabyteDB | `analytics_db` | Attendance, revenue, and trend projections | Deferred |
 | 10 | Promotion | Java + PostgreSQL | `promotion_db` | Promotion codes and reservations | Deferred |
 
-## G10 Baseline and In-Progress G11 Topology
+## G10 Baseline and G11 Payment Topology
 
 ```mermaid
 flowchart LR
@@ -54,8 +54,8 @@ flowchart LR
 
     ID --> IDDB[(identity_db)]
     PM -.-> PMDB[(payment_db)]
-    PM -.->|G11 locked pass only: payment.completed.v1| Kafka
-    FP -->|current producer until locked pass| Kafka
+    PM -->|payment.completed.v1| Kafka
+    FP -.->|historical compatibility fixture| Kafka
     MB --> MBDB[(member_db)]
     PL --> PLDB[(plans_db)]
     CI -.-> CIDB[(checkin_db)]
@@ -68,7 +68,7 @@ flowchart LR
 
 There is no Identifier-to-Member customer-flow call. Plans `8080` remains available only for Actuator, probes, and metrics after Kong cutover; Plans business traffic uses `50051`.
 
-Plans V1 has no Kafka producer, consumer, topic, outbox, cache, scheduler, Schema Registry dependency, or Payment integration. G8 fake Payment remains current producer to preserve historical purchase-correlation/replay proof; the real Payment producer is enabled only by the locked G11 pass.
+Plans V1 has no Kafka producer, consumer, topic, outbox, cache, scheduler, Schema Registry dependency, or Payment integration. G8 fake Payment remains preserved for historical purchase-correlation/replay proof; the real Payment transactional outbox produces `payment.completed.v1`.
 
 ## Ownership and Database Isolation
 
@@ -150,7 +150,7 @@ Never infer admin gym scope from UI state, request paths, or obsolete selected-g
 | Identifier public HTTP/JSON | Client to Kong to Identifier HTTP gateway on `8080` |
 | Member and Plans public HTTP/JSON | Client to Kong, then mTLS generated gateway `8443`, then service mTLS gRPC `50051` |
 | Native workload gRPC | Exact caller SAN to exact method on `50051` |
-| Kafka | Identifier/Member baseline plus G10 Check-in outbox; G8 fake remains `payment.completed.v1` producer until the G11 locked pass proves Payment outbox publication |
+| Kafka | Identifier/Member baseline plus G10 Check-in outbox; Payment transactional outbox produces `payment.completed.v1`; G8 fake remains a historical compatibility fixture |
 | Payment | Member-only mTLS `InitiatePayment`; SePay HTTPS native webhook only; no public Payment route/OpenAPI |
 | Check-in display | G10: logged-in `SUPER_ADMIN` iPad app to Kong to generated gateway to Check-in |
 

@@ -1,7 +1,7 @@
 # Phase 11 — Implement `ms-gym-payment` and Locked Gate (G11)
 
-> **Status: IN PROGRESS.** This phase supersedes the former contracts-only G11 scope on 2026-08-24. Its frozen decisions remain the baseline; preserve G0–G10 and G8 fake-payment evidence unchanged.
-> **Gate:** no completion claim before locked clean-source E2E, protected CI, sanitized evidence, and owner acceptance pass.
+> **Status: COMPLETE — 2026-08-24.** This phase supersedes the former contracts-only G11 scope. Its frozen decisions remain the baseline; preserve G0–G10 and G8 fake-payment evidence unchanged.
+> **Gate record:** locked clean-source E2E, protected CI, sanitized evidence, and user-directed accountable owner acceptance passed.
 > **Provider and scope:** `SEPAY` and `MEMBERSHIP` only. Momo, ZaloPay, VNPay, `TRAINER_BOOKING`, refunds, discounts, history, and revenue reporting remain out of scope.
 
 ## Objective
@@ -28,7 +28,7 @@ No new Protobuf release is authorized. Keep `InitiatePayment`, `PaymentCompleted
 | Event | Transactional outbox publishes the existing keyed-by-`user_id` `payment.completed.v1`; no new proto or Schema Registry subject. |
 | Exposure | `InitiatePayment` is mTLS-only from Member. No public Payment RPC, inline `google.api.http`, generated OpenAPI, or Kong Payment route. `POST /api/v1/payments/webhook/sepay` is native Spring MVC, HTTPS-only, without JWT. |
 | Deferred names | `payment.failed.v1` and `payment.refunded.v1` are names only: no producer, subject, consumer, refund behavior, or Member state transition. |
-| Historical fixture | G8 fake-payment remains current producer until the G11 locked pass proves the real producer. |
+| Historical fixture | G8 fake-payment remains preserved for historical compatibility and G8 evidence. The real Payment transactional outbox is the active producer. |
 
 Cross-service IDs are opaque strings. Payment creates no cross-service foreign key.
 
@@ -138,6 +138,8 @@ Payment needs least-privilege `payment_db` credentials, migration path/job, `SEP
 
 The G11 lock pins detached source SHAs, released contract/library versions, service/dependency image digests, migration checksum, rendered Helm/NetworkPolicy checksum, SePay URL/date/content checksum, and sanitized fixture checksums. Add produced proof under `docs/evidence/foundation-first/g11/`; never rewrite G8 or earlier evidence.
 
-## Exit criteria
+## Completion record
 
-G11 is complete only when all stages pass in the locked gate. Until then, `ms-gym-payment` is **implementation in progress**, G8 fake-payment remains current producer, and `payment.failed.v1`/`payment.refunded.v1` remain names only.
+G11 completed on 2026-08-24. Infrastructure PR [#2](https://github.com/pploc/gym-infra/pull/2) merged as `8f091d7759ea7ec020fa5ccba728fdc7588c6459`. The immutable checksum gate ([run 32740792386](https://github.com/pploc/gym-infra/actions/runs/32740792386)) and latest protected G11 gate ([run 32741414807](https://github.com/pploc/gym-infra/actions/runs/32741414807)) passed with the Member source/image `48f09867e5727fbbc17e0a9f55b7fa71ccec9e65` / `ghcr.io/pploc/ms-gym-member@sha256:b9ef68f024c3a9636d50260e0e3f767b085784e9ca161ca39dce19050ca8779d` and Payment source/image `f88a25eb9c6b04b6970b627d8f9c3112ab87d641` / `ghcr.io/pploc/ms-gym-payment@sha256:3afb6c28b8e9eb8a3da47808e823b998a522455e4f978e34275584b585c87090`.
+
+The accountable owner acceptance is recorded accurately as the user's 2026-08-24 instruction: “merge PR and mark Phase 11 done.” The real Payment transactional outbox now produces `payment.completed.v1`; G8 fake-payment remains a historical compatibility fixture. `payment.failed.v1` and `payment.refunded.v1` remain names only, and other providers, payment types, refunds, discounts, history, and revenue reporting remain deferred.

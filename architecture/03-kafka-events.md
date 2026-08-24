@@ -1,6 +1,6 @@
 # Kafka Event Catalog
 
-> **Roadmap status:** G9's released Kafka baseline remains historical. The current `common-go` frozen topic/type map also includes `identity.email.verification-requested.v1`. G10 completed `checkin.recorded.v1` outbox publish proof; see [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). G11 Payment implementation is in progress: G8 fake remains the current `payment.completed.v1` producer until the locked pass proves the real Payment outbox. Plans has no Kafka participation.
+> **Roadmap status:** G9's released Kafka baseline remains historical. The current `common-go` frozen topic/type map also includes `identity.email.verification-requested.v1`. G10 completed `checkin.recorded.v1` outbox publish proof; see [`../evidence/foundation-first/g10-final/README.md`](../evidence/foundation-first/g10-final/README.md). G11 Payment is complete: its transactional outbox is the active `payment.completed.v1` producer; G8 fake remains a historical compatibility fixture. Plans has no Kafka participation.
 
 Kafka values use concrete Protobuf messages with Schema Registry framing. Kafka is greenfield: no JSON topics, envelopes, or deployed offsets require compatibility adapters.
 
@@ -13,7 +13,7 @@ Closed event fields use `common.v1` prefixed enums (for example `PaymentType.PAY
 | `UserRegisteredEvent` | `identity.user.registered.v1` | `identity.user.registered.v1-value` | Identifier |
 | `UserSuspendedEvent` | `identity.user.suspended.v1` | `identity.user.suspended.v1-value` | Identifier |
 | `UserRoleChangedEvent` | `identity.user.role-changed.v1` | `identity.user.role-changed.v1-value` | Identifier |
-| `PaymentCompletedEvent` | `payment.completed.v1` | `payment.completed.v1-value` | G8 fake Payment fixture now; Payment transactional outbox only after locked G11 pass |
+| `PaymentCompletedEvent` | `payment.completed.v1` | `payment.completed.v1-value` | Payment transactional outbox |
 | `MembershipActivatedEvent` | `membership.activated.v1` | `membership.activated.v1-value` | Member |
 | `MembershipPausedEvent` | `membership.paused.v1` | `membership.paused.v1-value` | Member |
 | `MembershipResumedEvent` | `membership.resumed.v1` | `membership.resumed.v1-value` | Member |
@@ -26,9 +26,9 @@ Topic names follow `{domain}.{entity}.{action}.v1`. Subjects use `TopicNameStrat
 
 Enum string→enum wire breaks overwrite the same `.v1-value` subjects in place under paused traffic (no dual `.v2` topics/subjects). Compatibility mode for that cutover is not BACKWARD against the prior string schema; treat as coordinated greenfield subject replacement on disposable pre-production clusters.
 
-## Current G8 Producer and In-Progress G11 Cutover
+## Historical G8 Fixture and G11 Producer
 
-**Supersession note — 2026-08-24:** this diagram retains the historical G8 producer. Payment implementation is active, but its transactional outbox replaces the fake only after the locked G11 pass; no active `payment.failed.v1` or `payment.refunded.v1` behavior is added.
+**Completion note — 2026-08-24:** G11 Payment transactional outbox is the active producer. This diagram remains historical G8 evidence; no active `payment.failed.v1` or `payment.refunded.v1` behavior is added.
 
 ## G8 Event Flow
 
